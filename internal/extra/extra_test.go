@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"cc-usage/internal/config"
 )
@@ -41,5 +42,20 @@ func TestExpand(t *testing.T) {
 	}
 	if _, ok := Expand(nil, nil); ok {
 		t.Error("empty argv should be skipped")
+	}
+}
+
+func TestRunTimeoutKillsDescendants(t *testing.T) {
+	// 자식이 stdout을 물려받으면 직접 프로세스만 죽여서는 pipe가 안 닫힌다.
+	// 그룹째 죽이지 않으면 timeout_ms를 무시하고 5초를 기다린다.
+	cmds := []config.ExtraCommand{
+		{Command: []string{"sh", "-c", "sleep 5 &"}, TimeoutMS: 50},
+	}
+	start := time.Now()
+	if out := Run(context.Background(), cmds, Vars{}); out != nil {
+		t.Errorf("타임아웃된 명령은 출력이 없어야 한다: %q", out)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("timeout_ms=50인데 %v 걸렸다 — 자식이 pipe를 붙잡고 있다", d)
 	}
 }

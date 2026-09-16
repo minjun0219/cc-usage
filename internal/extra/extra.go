@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"cc-usage/internal/config"
 )
@@ -49,9 +51,16 @@ func Run(ctx context.Context, cmds []config.ExtraCommand, v Vars) []string {
 func run(ctx context.Context, c config.ExtraCommand, argv []string) []string {
 	ctx, cancel := context.WithTimeout(ctx, c.Timeout())
 	defer cancel()
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	// 자식이 stdout을 물려받으면 직접 프로세스만 죽여서는 pipe가 닫히지 않아
+	// Output()이 계속 기다린다 (`sh -c "sleep 5 &"`가 timeout_ms=50에도 5초를
+	// 잡아먹었다). 그룹째 죽이고, 그래도 남는 경우를 위해 취소 후 대기도 묶는다.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = 100 * time.Millisecond
 	// Output() drops stdout on a non-zero exit, which is what `curl -sf` and the
 	// old script's `|| :` bought us: 실패한 명령의 에러 본문이 새어 나오지 않는다.
-	b, err := exec.CommandContext(ctx, argv[0], argv[1:]...).Output()
+	b, err := cmd.Output()
 	if err != nil {
 		return nil
 	}
