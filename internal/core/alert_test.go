@@ -84,6 +84,31 @@ func TestAlertsWorstWindowWins(t *testing.T) {
 	}
 }
 
+func TestAlertsSameLevelPrefersSevenDay(t *testing.T) {
+	p := alertProfile(t)
+	st := &store.StateFile{}
+	now := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
+
+	// 5h가 먼저 임박에 닿아 경보를 잡는다.
+	only5h := Limits{FiveHour: &store.Window{Percent: 95, ResetsAt: now.Add(time.Hour)}}
+	if a, _ := Alerts(p, only5h, st, now); a.Window != "5h" {
+		t.Fatalf("5h만 임박: %+v", a)
+	}
+	// 나중에 7d가 같은 단계에 닿으면 7d로 넘어가고 새 엣지가 된다.
+	// (풀리는 데 더 오래 걸리는 쪽이 아프다.)
+	both := Limits{
+		FiveHour: &store.Window{Percent: 95, ResetsAt: now.Add(time.Hour)},
+		SevenDay: &store.Window{Percent: 95, ResetsAt: now.Add(72 * time.Hour)},
+	}
+	a, _ := Alerts(p, both, st, now.Add(time.Minute))
+	if a.Window != "7d" {
+		t.Errorf("같은 단계면 7d가 이겨야 한다: %+v", a)
+	}
+	if !a.Fired {
+		t.Error("7d로 넘어간 것은 새 엣지라 알림이 나가야 한다")
+	}
+}
+
 func TestAlertsNearDisabled(t *testing.T) {
 	p := &config.Profile{Name: "p", AlertPercent: -1} // 범위 밖 → 임박 경고 끔
 	p.ApplyDefaults()

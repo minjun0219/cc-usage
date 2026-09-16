@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func boolPtr(b bool) *bool { return &b }
 
@@ -51,5 +54,17 @@ func TestAlertPercentDefaults(t *testing.T) {
 		if p.AlertPercent != want {
 			t.Errorf("alert_percent %v → %v, want %v", in, p.AlertPercent, want)
 		}
+	}
+}
+
+func TestNotifyStateHidesArgs(t *testing.T) {
+	secret := "https://hooks.example.com/T000/B000/XXXXsecretXXXX"
+	p := &Profile{Name: "p", Notify: &Notify{Command: []string{"curl", "-d", "msg", secret}}}
+	got := p.NotifyState()
+	if strings.Contains(got, secret) {
+		t.Errorf("webhook URL이 doctor 출력에 남으면 안 된다: %s", got)
+	}
+	if !strings.Contains(got, "curl") || !strings.Contains(got, "3") {
+		t.Errorf("실행 파일명과 인자 개수는 보여야 한다: %s", got)
 	}
 }

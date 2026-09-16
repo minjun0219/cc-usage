@@ -74,7 +74,9 @@ func worstWindow(p *config.Profile, lim Limits) (AlertLevel, string, float64, st
 	for _, c := range []struct {
 		name string
 		w    *store.Window
-	}{{"5h", lim.FiveHour}, {"7d", lim.SevenDay}} {
+		// 7d를 먼저 본다 — 같은 단계면 뒤에 오는 5h가 이기지 못해 7d가 남는다.
+		// Exhausted()와 같은 순서다.
+	}{{"7d", lim.SevenDay}, {"5h", lim.FiveHour}} {
 		if c.w == nil {
 			continue
 		}

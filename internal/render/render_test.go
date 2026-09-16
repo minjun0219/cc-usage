@@ -187,3 +187,17 @@ func TestWindowAlertEmphasis(t *testing.T) {
 		t.Errorf("경보 없음: %q", plain)
 	}
 }
+
+func TestLinesNeverEmpty(t *testing.T) {
+	// label을 숨긴 profile + 빈 stdin + cache 없음 → 모든 세그먼트가 빈다.
+	hidden := ""
+	p := &config.Profile{Name: "personal", Label: &hidden}
+	p.ApplyDefaults()
+	uf := &store.UsageFile{}
+	lim := core.Limits{FromStdin: true}
+	lines := Lines(View{Profile: p, Limits: lim, Usage: uf,
+		Credits: core.Credits(p, lim, uf, time.Now()), Now: time.Now()}, Style{})
+	if len(lines) != 1 || lines[0] != "[personal]" {
+		t.Errorf("statusline이 통째로 비면 안 된다: %q", lines)
+	}
+}

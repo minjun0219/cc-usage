@@ -84,6 +84,11 @@ func Lines(v View, s Style) []string {
 	if cl := creditLine(v, s); cl != "" {
 		lines = append(lines, cl)
 	}
+	if len(lines) == 0 {
+		// label을 숨긴 profile에서 stdin도 cache도 비면 모든 세그먼트가 빈다.
+		// statusline이 통째로 비면 무엇이 도는지조차 알 수 없으므로 최소 한 줄.
+		lines = append(lines, s.c(dim, "["+v.Profile.Display()+"]"))
+	}
 	return lines
 }
 

@@ -62,6 +62,21 @@ func (n *Notify) On() bool {
 	return n.Enabled == nil || *n.Enabled
 }
 
+// NotifyState explains why notifications will or will not fire. 인자는 숨긴다 —
+// webhook URL이나 토큰을 넣는 게 흔한데 doctor 출력은 로그에 남는다.
+func (p *Profile) NotifyState() string {
+	switch {
+	case p.Notify == nil:
+		return "설정 없음"
+	case len(p.Notify.Command) == 0:
+		return "command 없음"
+	case !p.Notify.On():
+		return "enabled=false (명령은 보존됨)"
+	}
+	return fmt.Sprintf("on — %s (인자 %d개, 내용은 숨김)",
+		p.Notify.Command[0], len(p.Notify.Command)-1)
+}
+
 // ExtraCommand is one external statusline segment. Command is an argv list (no
 // shell); the placeholders {{session_id}} and {{cwd}} are substituted in each
 // element. 값이 빈 placeholder가 하나라도 있으면 그 명령은 건너뛴다.

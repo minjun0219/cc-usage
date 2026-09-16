@@ -128,11 +128,16 @@ func runStatusline(args []string) error {
 	}
 	alert, alertDirty := core.Alerts(p, lim, &st, now)
 	dirty = dirty || alertDirty
-	if alert.Fired {
-		spawnNotify(p, alert) // 엣지에서 한 번. 실패해도 statusline은 그대로 간다.
-	}
+
+	// 엣지를 먼저 기록하고 나서 쏜다. 기록 전에 쏘면 (a) 같은 틱의 두 번째
+	// 호출이 옛 키를 읽어 또 쏘고 (b) cache가 쓰기 불가일 때 매 렌더가 같은
+	// 조건을 새 엣지로 봐서 알림이 폭주한다.
+	stateOK := true
 	if dirty {
-		_ = store.Write(store.StatePath(p), &st)
+		stateOK = store.Write(store.StatePath(p), &st) == nil
+	}
+	if alert.Fired && stateOK {
+		spawnNotify(p, alert) // 실패해도 statusline은 그대로 간다.
 	}
 
 	dir := in.Workspace.CurrentDir
@@ -318,19 +323,6 @@ func runProbe(args []string) error {
 	return nil
 }
 
-// notifyState explains why notifications will or will not fire.
-func notifyState(p *config.Profile) string {
-	switch {
-	case p.Notify == nil:
-		return "설정 없음"
-	case len(p.Notify.Command) == 0:
-		return "command 없음"
-	case !p.Notify.On():
-		return "enabled=false (명령은 보존됨)"
-	}
-	return "on — " + strings.Join(p.Notify.Command, " ")
-}
-
 func runDoctor(args []string) error {
 	p, _, err := profileFlags("doctor", args)
 	if err != nil {
@@ -355,7 +347,7 @@ func runDoctor(args []string) error {
 	fmt.Printf("cache dir:     %s\n", store.Dir(p))
 	fmt.Printf("guard:         %v\n", p.Guard)
 	fmt.Printf("alert:         임박 %.0f%% (0이면 소진만)\n", p.AlertPercent)
-	fmt.Printf("notify:        %v\n", notifyState(p))
+	fmt.Printf("notify:        %v\n", p.NotifyState())
 
 	tok, err := auth.Load(context.Background(), p)
 	switch {
