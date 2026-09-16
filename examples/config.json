@@ -1,0 +1,18 @@
+{
+  "default_profile": "personal",
+  "profiles": {
+    "personal": {
+      "label": "me",
+      "config_dir": "~/.claude",
+      "source": "stdin"
+    },
+    "work": {
+      "label": "work",
+      "config_dir": "~/.claude-work",
+      "source": "api",
+      "keychain_service": "Claude Code-credentials-XXXXXXXX",
+      "poll_seconds": 300,
+      "guard": true
+    }
+  }
+}

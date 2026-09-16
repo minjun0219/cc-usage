@@ -1,0 +1,16 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.local/bin/cc-usage statusline --profile work",
+    "refreshInterval": 60
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "~/.local/bin/cc-usage guard --profile work" }
+        ]
+      }
+    ]
+  }
+}

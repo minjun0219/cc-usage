@@ -1,0 +1,7 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.local/bin/cc-usage statusline --profile personal",
+    "refreshInterval": 60
+  }
+}

@@ -1,0 +1,142 @@
+// Package store persists per-profile cache files with atomic writes.
+package store
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"syscall"
+	"time"
+
+	"cc-usage/internal/config"
+)
+
+// Window is one rate-limit window. Percent is 0-100.
+type Window struct {
+	Percent  float64   `json:"percent"`
+	ResetsAt time.Time `json:"resets_at,omitempty"`
+}
+
+// Extra is the usage-credits (extra usage) block. UsedCredits and MonthlyLimit are raw API units.
+type Extra struct {
+	Enabled      bool     `json:"enabled"`
+	UsedCredits  *float64 `json:"used_credits,omitempty"`
+	MonthlyLimit *float64 `json:"monthly_limit,omitempty"`
+	Utilization  *float64 `json:"utilization,omitempty"`
+}
+
+type Usage struct {
+	FetchedAt time.Time `json:"fetched_at"`
+	FiveHour  *Window   `json:"five_hour,omitempty"`
+	SevenDay  *Window   `json:"seven_day,omitempty"`
+	Extra     *Extra    `json:"extra,omitempty"`
+}
+
+// Baseline is the credit count when a limit window was first seen exhausted.
+type Baseline struct {
+	WindowKey string    `json:"window_key"`
+	Credits   float64   `json:"credits"`
+	At        time.Time `json:"at"`
+}
+
+// UsageFile is written only by `cc-usage refresh`.
+type UsageFile struct {
+	Usage           *Usage    `json:"usage,omitempty"`
+	LastAttempt     time.Time `json:"last_attempt,omitempty"`
+	LastError       string    `json:"last_error,omitempty"`
+	Failures        int       `json:"failures,omitempty"`
+	BackoffUntil    time.Time `json:"backoff_until,omitempty"`
+	PrevCredits     *float64  `json:"prev_credits,omitempty"`
+	CreditsRisingAt time.Time `json:"credits_rising_at,omitempty"`
+	Baseline        *Baseline `json:"baseline,omitempty"`
+}
+
+// StateFile is written only by `cc-usage statusline` (what Claude Code passed on stdin).
+type StateFile struct {
+	ObservedAt      time.Time `json:"observed_at"`
+	StdinLimitsSeen time.Time `json:"stdin_limits_seen,omitempty"`
+	FiveHour        *Window   `json:"five_hour,omitempty"`
+	SevenDay        *Window   `json:"seven_day,omitempty"`
+	SpawnedAt       time.Time `json:"spawned_at,omitempty"`
+}
+
+// AllowFile is written by `cc-usage allow`.
+type AllowFile struct {
+	AllowUntil time.Time `json:"allow_until"`
+}
+
+func Dir(p *config.Profile) string {
+	base := os.Getenv("XDG_CACHE_HOME")
+	if base == "" {
+		base = config.Expand("~/.cache")
+	}
+	return filepath.Join(base, "cc-usage", p.Name)
+}
+
+func UsagePath(p *config.Profile) string { return filepath.Join(Dir(p), "usage.json") }
+func StatePath(p *config.Profile) string { return filepath.Join(Dir(p), "state.json") }
+func AllowPath(p *config.Profile) string { return filepath.Join(Dir(p), "allow.json") }
+func LockPath(p *config.Profile) string  { return filepath.Join(Dir(p), "refresh.lock") }
+
+// Read decodes a JSON file; a missing file leaves v untouched and returns nil.
+func Read(path string, v any) error {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, v)
+}
+
+// Write encodes v and atomically replaces path (mode 0600).
+func Write(path string, v any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// TryLock takes a non-blocking exclusive lock. ok=false means another process holds it.
+func TryLock(path string) (unlock func(), ok bool, err error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, false, err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+	}, true, nil
+}
