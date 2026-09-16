@@ -18,7 +18,7 @@ Claude Code statusline + 크레딧 guard. **개인 계정(Pro/Max)** 과 **회�
 | `api` (Team) | usage API | `poll_seconds` 주기 (기본 300초) |
 | `auto` | 최근 6시간 내 stdin에 `rate_limits`가 보였으면 stdin, 아니면 api | 위 규칙 |
 
-- `cc-usage statusline`은 **network 호출을 하지 않습니다.** cache만 읽고, 갱신이 필요하면 `cc-usage refresh`를 detached로 띄운 뒤 즉시 종료합니다.
+- `cc-usage statusline`은 **network를 기다리지 않습니다.** usage API는 이 경로에서 호출하지 않고, 갱신이 필요하면 `cc-usage refresh`를 detached로 띄운 뒤 즉시 종료합니다. 로컬 subprocess(`git status`, `extra_commands`)는 타임아웃을 걸고 부르며, 느리거나 실패하면 그 세그먼트만 빠집니다. `extra_commands`에 network를 타는 명령을 넣는 것은 설정하는 쪽의 선택이고, 그 지연은 타임아웃이 막습니다.
 - `refresh`는 profile별 lock으로 동시에 하나만 실행되고, 실패 시 1m → 32m(최대 30m) backoff, 429의 `Retry-After`를 존중합니다.
 - 한도 100%가 처음 관측된 시점의 `used_credits`를 baseline으로 저장해서 "이번 window에서 쓴 크레딧"을 계산합니다. 첫 조회 전 소진분은 포함되지 않습니다.
 - 경로 줄은 stdin의 `workspace.current_dir`에서 나옵니다. 브랜치 상태는 `git status --porcelain=v2 --branch --untracked-files=no` **한 번**으로 읽습니다 — 브랜치명, 변경 파일 수(`=` conflict / `+` staged / `!` unstaged), ahead(`⇡`)/behind(`⇣`). 개수는 porcelain=v2가 파일당 한 줄을 뱉고 `XY` 필드가 staged/unstaged를 구분해 주므로 추가 git 호출이 없습니다. untracked는 스캔 비용 때문에 세지 않습니다(`--untracked-files=no`). git repo가 아니거나 500ms를 넘기면 세그먼트만 빠집니다.
