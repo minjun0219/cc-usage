@@ -26,15 +26,7 @@ examples/           config, settings.json 예시
 
 ## 개발
 
-```bash
-make test     # go vet + go test
-make build    # bin/cc-usage
-```
-
-API 없이 end-to-end 확인:
-- `CC_USAGE_API_URL`로 가짜 서버 지정 (테스트 전용)
-- profile에 `token_env`를 지정해 keychain 우회
-- `HOME`/`XDG_CACHE_HOME`을 임시 디렉터리로 지정
+작업 방식(브랜치 정책 · 게이트 · preview · 설치 규칙)은 [AGENTS.md](AGENTS.md)에 있다.
 
 ## 미확인 사항 (실제 계정으로 검증 필요)
 
