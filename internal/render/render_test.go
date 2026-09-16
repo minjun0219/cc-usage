@@ -153,3 +153,37 @@ func TestLinesLabelHidden(t *testing.T) {
 		t.Errorf("기본 라벨: %q", lines[0])
 	}
 }
+
+func TestWindowAlertEmphasis(t *testing.T) {
+	now := time.Now()
+	p := &config.Profile{Name: "me"}
+	p.ApplyDefaults()
+	uf := &store.UsageFile{}
+	lim := core.Limits{
+		FiveHour:  &store.Window{Percent: 95},
+		SevenDay:  &store.Window{Percent: 40},
+		FromStdin: true,
+	}
+	line := func(a core.Alert) string {
+		return Lines(View{Profile: p, Limits: lim, Alert: a, Usage: uf,
+			Credits: core.Credits(p, lim, uf, now), Now: now}, Style{Color: true})[0]
+	}
+	// burst의 켜진 프레임만 배지, 꺼진 프레임과 burst 종료 후에는 굵은 빨강.
+	on := line(core.Alert{Level: core.AlertNear, Window: "5h", Burst: true, On: true})
+	off := line(core.Alert{Level: core.AlertNear, Window: "5h", Burst: true})
+	rest := line(core.Alert{Level: core.AlertNear, Window: "5h"})
+	if !strings.Contains(on, redBG+"95%") {
+		t.Errorf("켜진 프레임은 배지여야 한다: %q", on)
+	}
+	if !strings.Contains(off, bold+red+"95%") || !strings.Contains(rest, bold+red+"95%") {
+		t.Errorf("꺼진 프레임·burst 종료 후는 굵은 빨강: off=%q rest=%q", off, rest)
+	}
+	// 경보를 올리지 않은 window는 평소 색 그대로다.
+	if !strings.Contains(on, green+"40%") {
+		t.Errorf("7d는 건드리지 않아야 한다: %q", on)
+	}
+	// 경보가 없으면 임계값 색 규칙만 적용된다.
+	if plain := line(core.Alert{}); !strings.Contains(plain, red+"95%") || strings.Contains(plain, redBG) {
+		t.Errorf("경보 없음: %q", plain)
+	}
+}

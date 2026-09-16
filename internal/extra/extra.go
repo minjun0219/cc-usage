@@ -27,7 +27,7 @@ func Run(ctx context.Context, cmds []config.ExtraCommand, v Vars) []string {
 	out := make([][]string, len(cmds))
 	var wg sync.WaitGroup
 	for i, c := range cmds {
-		argv, ok := expand(c.Command, v)
+		argv, ok := Expand(c.Command, v.vals())
 		if !ok {
 			continue
 		}
@@ -64,13 +64,16 @@ func run(ctx context.Context, c config.ExtraCommand, argv []string) []string {
 	return lines
 }
 
-// expand substitutes the placeholders in every argv element. ok is false when the
+func (v Vars) vals() map[string]string {
+	return map[string]string{"{{session_id}}": v.SessionID, "{{cwd}}": v.Cwd}
+}
+
+// Expand substitutes the placeholders in every argv element. ok is false when the
 // command should be skipped: 빈 자리를 채워 부르면 무의미한 조회가 된다.
-func expand(argv []string, v Vars) ([]string, bool) {
+func Expand(argv []string, vals map[string]string) ([]string, bool) {
 	if len(argv) == 0 {
 		return nil, false
 	}
-	vals := map[string]string{"{{session_id}}": v.SessionID, "{{cwd}}": v.Cwd}
 	out := make([]string, len(argv))
 	for i, a := range argv {
 		for k, val := range vals {

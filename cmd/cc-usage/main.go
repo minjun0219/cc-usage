@@ -126,6 +126,11 @@ func runStatusline(args []string) error {
 		st.SpawnedAt = now
 		dirty = true
 	}
+	alert, alertDirty := core.Alerts(p, lim, &st, now)
+	dirty = dirty || alertDirty
+	if alert.Fired {
+		spawnNotify(p, alert) // 엣지에서 한 번. 실패해도 statusline은 그대로 간다.
+	}
 	if dirty {
 		_ = store.Write(store.StatePath(p), &st)
 	}
@@ -143,6 +148,7 @@ func runStatusline(args []string) error {
 		Model:      in.Model.DisplayName,
 		ContextPct: in.ContextWindow.UsedPercentage,
 		Limits:     lim,
+		Alert:      alert,
 		Usage:      &uf,
 		Credits:    core.Credits(p, lim, &uf, now),
 		Now:        now,
@@ -168,6 +174,29 @@ func spawnRefresh(p *config.Profile) error {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+// spawnNotify fires the profile's notify command detached, once per 단계.
+// 어떤 알림 수단인지는 설정에만 있다 — 코드는 argv와 치환만 안다.
+func spawnNotify(p *config.Profile, a core.Alert) {
+	if p.Notify == nil {
+		return
+	}
+	argv, ok := extra.Expand(p.Notify.Command, map[string]string{
+		"{{level}}":   a.LevelName(),
+		"{{window}}":  a.Window,
+		"{{percent}}": fmt.Sprintf("%.0f", a.Percent),
+		"{{message}}": a.Message(),
+	})
+	if !ok {
+		return
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	if cmd.Start() == nil {
+		_ = cmd.Process.Release()
+	}
 }
 
 func runRefresh(args []string) error {

@@ -61,10 +61,30 @@ CLAUDE_CONFIG_DIR=~/.claude-work claude  # 회사
 | `credit_divisor` | 100 | `used_credits` 단위 환산 (cent 가정) |
 | `currency` | `$` | 표시 통화 기호 |
 | `always_show_credits` | false | 한도 전에도 크레딧 줄 표시 (stdin 모드에서는 API 호출이 늘어남) |
+| `alert_percent` | 90 | 이 %를 넘으면 "임박" 강조. 범위 밖(예: `-1`)이면 임박 경고를 끄고 소진만 강조 |
+| `notify` | – | 한도 단계가 올라갈 때 1회 실행할 명령 (아래 참고) |
 | `guard` | false | `cc-usage guard` 활성화 |
 | `extra_commands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |
 
 profile 선택 순서: `--profile` → `$CC_USAGE_PROFILE` → `$CLAUDE_CONFIG_DIR`와 `config_dir` 일치 → `default_profile`.
+
+#### `alert_percent` / `notify` — 한도 임박 알리기
+
+한도가 `alert_percent`를 넘으면(임박) 또는 100%에 닿으면(소진), 해당 window 세그먼트를 **몇 초간 빨간 배지로 깜빡인 뒤 굵은 빨강으로 고정**합니다. 계속 움직이는 표시는 결국 눈에 안 들어오기 때문에, 움직임은 단계가 올라간 직후 `AlertBurst`(6초) 동안만입니다. 프레임은 벽시계에서 고르므로 상태 저장이 없고, 터미널의 blink(SGR 5) 지원 여부와 무관합니다.
+
+> statusline은 초당 여러 번 호출됩니다. 그래서 강조와 알림 모두 **엣지 트리거**입니다 — 단계가 올라간 그 순간 한 번만 발동하고, 창이 리셋되면 다시 무장합니다. 어디까지 알렸는지는 `state.json`에 남습니다(`statusline`이 유일한 writer라는 불변 조건 그대로).
+
+`notify`를 두면 그 엣지에서 명령을 **detached로 1회** 실행합니다.
+
+```json
+"alert_percent": 90,
+"notify": {
+  "command": ["osascript", "-e",
+              "display notification \"{{message}}\" with title \"Claude 한도\" subtitle \"{{window}} {{percent}}%\""]
+}
+```
+
+placeholder는 `{{level}}`(`near`/`over`), `{{window}}`(`5h`/`7d`), `{{percent}}`, `{{message}}`입니다. `extra_commands`와 같은 이유로 argv 배열이고, 어떤 알림 수단을 쓸지는 설정에만 있습니다 — 코드에는 `osascript`가 없습니다.
 
 #### `extra_commands` — 다른 도구의 줄 덧붙이기
 

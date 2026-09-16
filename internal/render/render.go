@@ -28,6 +28,7 @@ const (
 	blue   = "\033[34m"
 	yellow = "\033[33m"
 	red    = "\033[31m"
+	redBG  = "\033[41;97m"
 	bold   = "\033[1m"
 )
 
@@ -45,6 +46,7 @@ type View struct {
 	Model      string
 	ContextPct *float64
 	Limits     core.Limits
+	Alert      core.Alert
 	Usage      *store.UsageFile
 	Credits    core.CreditView
 	Now        time.Time
@@ -64,10 +66,10 @@ func Lines(v View, s Style) []string {
 		parts = append(parts, "ctx "+s.c(pctColor(*v.ContextPct), fmt.Sprintf("%.0f%%", *v.ContextPct)))
 	}
 	if w := v.Limits.FiveHour; w != nil {
-		parts = append(parts, windowText("5h", w, v.Now, s))
+		parts = append(parts, windowText("5h", w, v, s))
 	}
 	if w := v.Limits.SevenDay; w != nil {
-		parts = append(parts, windowText("7d", w, v.Now, s))
+		parts = append(parts, windowText("7d", w, v, s))
 	}
 	if note := statusNote(v, s); note != "" {
 		parts = append(parts, note)
@@ -160,12 +162,25 @@ func AbbrevHome(p string) string {
 	return p
 }
 
-func windowText(name string, w *store.Window, now time.Time, s Style) string {
-	t := name + " " + s.c(pctColor(w.Percent), fmt.Sprintf("%.0f%%", w.Percent))
-	if !w.ResetsAt.IsZero() && w.ResetsAt.After(now) {
-		t += " " + s.c(dim, resetText(w.ResetsAt, now))
+func windowText(name string, w *store.Window, v View, s Style) string {
+	t := name + " " + s.c(alertStyle(name, w, v.Alert), fmt.Sprintf("%.0f%%", w.Percent))
+	if !w.ResetsAt.IsZero() && w.ResetsAt.After(v.Now) {
+		t += " " + s.c(dim, resetText(w.ResetsAt, v.Now))
 	}
 	return t
+}
+
+// alertStyle emphasises the window that raised the alert: 단계가 올라간 직후
+// 몇 초만 배지로 깜빡이고(눈을 끌고), 그 뒤에는 굵은 빨강으로 가만히 남는다.
+// 계속 움직이는 표시는 결국 배경이 된다.
+func alertStyle(name string, w *store.Window, a core.Alert) string {
+	if a.Level == core.AlertNone || a.Window != name {
+		return pctColor(w.Percent)
+	}
+	if a.Burst && a.On {
+		return redBG
+	}
+	return bold + red
 }
 
 // resetText is the time left until the window resets, plus the local wall clock

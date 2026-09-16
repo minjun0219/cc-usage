@@ -35,11 +35,11 @@ func TestRunSkipsEmptyPlaceholder(t *testing.T) {
 }
 
 func TestExpand(t *testing.T) {
-	argv, ok := expand([]string{"curl", "--data-urlencode", "cwd={{cwd}}", "-s"}, Vars{Cwd: "/a b"})
+	argv, ok := Expand([]string{"curl", "--data-urlencode", "cwd={{cwd}}", "-s"}, Vars{Cwd: "/a b"}.vals())
 	if !ok || !reflect.DeepEqual(argv, []string{"curl", "--data-urlencode", "cwd=/a b", "-s"}) {
 		t.Errorf("got %q ok=%v", argv, ok)
 	}
-	if _, ok := expand(nil, Vars{}); ok {
+	if _, ok := Expand(nil, nil); ok {
 		t.Error("empty argv should be skipped")
 	}
 }

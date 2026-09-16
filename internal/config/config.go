@@ -33,9 +33,21 @@ type Profile struct {
 	AlwaysShowCredits bool    `json:"always_show_credits"`
 	Guard             bool    `json:"guard"`
 
+	// AlertPercent is the "임박" threshold. 0이면 소진(100%)에서만 강조한다.
+	AlertPercent float64 `json:"alert_percent"`
+	// Notify fires once per 단계 when a limit is hit. nil이면 알림 없음.
+	Notify *Notify `json:"notify"`
+
 	// ExtraCommands append other tools' statusline output below cc-usage's own
 	// lines. 배(repo)별 사정을 코드가 아니라 설정에 두기 위한 창구다.
 	ExtraCommands []ExtraCommand `json:"extra_commands"`
+}
+
+// Notify runs once when a limit first reaches 임박 or 소진. Command is an argv
+// list with {{level}} · {{window}} · {{percent}} · {{message}} 치환.
+// 어떤 알림 수단을 쓸지는 설정에만 있다 — osascript든 무엇이든.
+type Notify struct {
+	Command []string `json:"command"`
 }
 
 // ExtraCommand is one external statusline segment. Command is an argv list (no
@@ -139,6 +151,12 @@ func (p *Profile) ApplyDefaults() {
 	}
 	if p.CreditPollSeconds <= 0 {
 		p.CreditPollSeconds = 300
+	}
+	if p.AlertPercent == 0 {
+		p.AlertPercent = 90
+	}
+	if p.AlertPercent < 0 || p.AlertPercent > 100 {
+		p.AlertPercent = 0 // 범위를 벗어나면 임박 경고를 끈다 (소진 강조는 남는다)
 	}
 	if p.CreditDivisor <= 0 {
 		p.CreditDivisor = 100

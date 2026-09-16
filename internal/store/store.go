@@ -59,6 +59,10 @@ type StateFile struct {
 	FiveHour        *Window   `json:"five_hour,omitempty"`
 	SevenDay        *Window   `json:"seven_day,omitempty"`
 	SpawnedAt       time.Time `json:"spawned_at,omitempty"`
+	// AlertKey는 "<단계>@<window>@<리셋시각>"이다. 창이 리셋되거나 단계가
+	// 올라가면 값이 달라져 강조와 알림이 다시 무장한다.
+	AlertKey string    `json:"alert_key,omitempty"`
+	AlertAt  time.Time `json:"alert_at,omitempty"`
 }
 
 // AllowFile is written by `cc-usage allow`.

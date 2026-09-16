@@ -74,14 +74,18 @@ func (l Limits) Exhausted() (bool, string) {
 		w    *store.Window
 	}{{"7d", l.SevenDay}, {"5h", l.FiveHour}} {
 		if c.w != nil && c.w.Percent >= 100 {
-			key := c.name
-			if !c.w.ResetsAt.IsZero() {
-				key += "@" + c.w.ResetsAt.UTC().Truncate(time.Minute).Format(time.RFC3339)
-			}
-			return true, key
+			return true, windowKey(c.name, c.w)
 		}
 	}
 	return false, ""
+}
+
+// windowKey identifies a window *instance* — 같은 5h라도 리셋되면 다른 키다.
+func windowKey(name string, w *store.Window) string {
+	if w.ResetsAt.IsZero() {
+		return name
+	}
+	return name + "@" + w.ResetsAt.UTC().Truncate(time.Minute).Format(time.RFC3339)
 }
 
 // NeedRefresh decides whether statusline should spawn `cc-usage refresh`.
