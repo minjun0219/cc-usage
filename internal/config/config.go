@@ -47,7 +47,19 @@ type Profile struct {
 // list with {{level}} · {{window}} · {{percent}} · {{message}} 치환.
 // 어떤 알림 수단을 쓸지는 설정에만 있다 — osascript든 무엇이든.
 type Notify struct {
+	// Enabled를 따로 두는 이유: 명령은 적어 둔 채 껐다 켰다 하기 위해서다.
+	// 끄자고 블록을 지우면 다시 켤 때 명령을 기억해 내야 한다.
+	Enabled *bool    `json:"enabled"`
 	Command []string `json:"command"`
+}
+
+// On reports whether notifications should fire. 블록이 있고 명령이 있으면
+// 기본은 켜짐이고, enabled를 false로 적었을 때만 꺼진다.
+func (n *Notify) On() bool {
+	if n == nil || len(n.Command) == 0 {
+		return false
+	}
+	return n.Enabled == nil || *n.Enabled
 }
 
 // ExtraCommand is one external statusline segment. Command is an argv list (no

@@ -179,7 +179,7 @@ func spawnRefresh(p *config.Profile) error {
 // spawnNotify fires the profile's notify command detached, once per 단계.
 // 어떤 알림 수단인지는 설정에만 있다 — 코드는 argv와 치환만 안다.
 func spawnNotify(p *config.Profile, a core.Alert) {
-	if p.Notify == nil {
+	if !p.Notify.On() {
 		return
 	}
 	argv, ok := extra.Expand(p.Notify.Command, map[string]string{
@@ -318,6 +318,19 @@ func runProbe(args []string) error {
 	return nil
 }
 
+// notifyState explains why notifications will or will not fire.
+func notifyState(p *config.Profile) string {
+	switch {
+	case p.Notify == nil:
+		return "설정 없음"
+	case len(p.Notify.Command) == 0:
+		return "command 없음"
+	case !p.Notify.On():
+		return "enabled=false (명령은 보존됨)"
+	}
+	return "on — " + strings.Join(p.Notify.Command, " ")
+}
+
 func runDoctor(args []string) error {
 	p, _, err := profileFlags("doctor", args)
 	if err != nil {
@@ -341,6 +354,8 @@ func runDoctor(args []string) error {
 	fmt.Printf("creds file:    %s\n", p.CredentialsFile)
 	fmt.Printf("cache dir:     %s\n", store.Dir(p))
 	fmt.Printf("guard:         %v\n", p.Guard)
+	fmt.Printf("alert:         임박 %.0f%% (0이면 소진만)\n", p.AlertPercent)
+	fmt.Printf("notify:        %v\n", notifyState(p))
 
 	tok, err := auth.Load(context.Background(), p)
 	switch {

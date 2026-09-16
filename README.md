@@ -74,17 +74,22 @@ profile 선택 순서: `--profile` → `$CC_USAGE_PROFILE` → `$CLAUDE_CONFIG_D
 
 > statusline은 초당 여러 번 호출됩니다. 그래서 강조와 알림 모두 **엣지 트리거**입니다 — 단계가 올라간 그 순간 한 번만 발동하고, 창이 리셋되면 다시 무장합니다. 어디까지 알렸는지는 `state.json`에 남습니다(`statusline`이 유일한 writer라는 불변 조건 그대로).
 
-`notify`를 두면 그 엣지에서 명령을 **detached로 1회** 실행합니다.
+`notify`를 두면 그 엣지에서 명령을 **detached로 1회** 실행합니다. `enabled`를 `false`로 두면 명령은 그대로 둔 채 끕니다 — 끄자고 블록을 지우면 다시 켤 때 명령을 기억해 내야 하기 때문입니다. `enabled`를 생략하면 켜진 것으로 봅니다. 현재 상태는 `cc-usage doctor`가 보여줍니다.
 
 ```json
 "alert_percent": 90,
 "notify": {
+  "enabled": true,
   "command": ["osascript", "-e",
               "display notification \"{{message}}\" with title \"Claude 한도\" subtitle \"{{window}} {{percent}}%\""]
 }
 ```
 
 placeholder는 `{{level}}`(`near`/`over`), `{{window}}`(`5h`/`7d`), `{{percent}}`, `{{message}}`입니다. `extra_commands`와 같은 이유로 argv 배열이고, 어떤 알림 수단을 쓸지는 설정에만 있습니다 — 코드에는 `osascript`가 없습니다.
+
+수단은 환경에 따라 갈립니다. `osascript`·`say`·`terminal-notifier`는 **cc-usage가 도는 그 머신**에서 울리므로, SSH 너머에서 쓰는 중이라면 아무도 못 봅니다. 그 경우 `curl`로 푸시 서비스(ntfy, Pushover, Slack webhook 등)에 쏘는 편이 실제로 도착합니다. 다만 한도 수치가 외부로 나가므로 토픽/엔드포인트 관리가 필요합니다.
+
+> 터미널 벨(`\a`)이나 OSC 9/777은 SSH를 타고 실제로 보고 있는 터미널까지 가지만, `notify`는 detached라 stdout이 터미널에 없어서 이 경로로는 안 됩니다. 쓰려면 statusline 출력 자체에 섞는 별도 경로가 필요합니다.
 
 #### `extra_commands` — 다른 도구의 줄 덧붙이기
 

@@ -30,6 +30,7 @@
       ],
       "alert_percent": 90,
       "notify": {
+        "enabled": true,
         "command": [
           "osascript",
           "-e",
