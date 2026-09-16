@@ -18,6 +18,8 @@ import (
 	"cc-usage/internal/auth"
 	"cc-usage/internal/config"
 	"cc-usage/internal/core"
+	"cc-usage/internal/extra"
+	"cc-usage/internal/git"
 	"cc-usage/internal/render"
 	"cc-usage/internal/store"
 )
@@ -128,8 +130,16 @@ func runStatusline(args []string) error {
 		_ = store.Write(store.StatePath(p), &st)
 	}
 
+	dir := in.Workspace.CurrentDir
+	var gs *git.Status
+	if st, ok := git.Read(context.Background(), dir); ok {
+		gs = &st
+	}
+
 	lines := render.Lines(render.View{
 		Profile:    p,
+		Dir:        dir,
+		Git:        gs,
 		Model:      in.Model.DisplayName,
 		ContextPct: in.ContextWindow.UsedPercentage,
 		Limits:     lim,
@@ -137,6 +147,10 @@ func runStatusline(args []string) error {
 		Credits:    core.Credits(p, lim, &uf, now),
 		Now:        now,
 	}, render.DefaultStyle())
+	// 다른 도구의 세그먼트는 cc-usage 줄 아래에 그대로 붙인다. 실패해도 조용히
+	// 빠질 뿐이라 statusline은 항상 무언가를 출력한다.
+	lines = append(lines, extra.Run(context.Background(), p.ExtraCommands,
+		extra.Vars{SessionID: in.SessionID, Cwd: dir})...)
 	fmt.Println(strings.Join(lines, "\n"))
 	return nil
 }
@@ -222,7 +236,7 @@ func runGuard(args []string) error {
 	if !d.Block {
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "[cc-usage:%s] %s.\n계속하려면 터미널에서: cc-usage allow 30m --profile %s\n", p.Label, d.Reason, p.Name)
+	fmt.Fprintf(os.Stderr, "[cc-usage:%s] %s.\n계속하려면 터미널에서: cc-usage allow 30m --profile %s\n", p.Display(), d.Reason, p.Name)
 	os.Exit(2)
 	return nil
 }
@@ -239,14 +253,14 @@ func runAllow(args []string) error {
 	var a store.AllowFile
 	if arg == "off" || arg == "0" {
 		a.AllowUntil = time.Time{}
-		fmt.Printf("[%s] guard 다시 활성화\n", p.Label)
+		fmt.Printf("[%s] guard 다시 활성화\n", p.Display())
 	} else {
 		d, err := time.ParseDuration(arg)
 		if err != nil || d <= 0 {
 			return fmt.Errorf("invalid duration %q (예: 30m, 2h)", arg)
 		}
 		a.AllowUntil = time.Now().Add(d)
-		fmt.Printf("[%s] %s까지 크레딧 사용 허용\n", p.Label, a.AllowUntil.Format("15:04"))
+		fmt.Printf("[%s] %s까지 크레딧 사용 허용\n", p.Display(), a.AllowUntil.Format("15:04"))
 	}
 	return store.Write(store.AllowPath(p), &a)
 }
@@ -292,7 +306,7 @@ func runDoctor(args []string) error {
 		fmt.Printf("keychain 후보:  %s\n", strings.Join(svcs, ", "))
 	}
 	fmt.Printf("config:        %s\n", config.Path())
-	fmt.Printf("profile:       %s (label=%s, source=%s)\n", p.Name, p.Label, p.Source)
+	fmt.Printf("profile:       %s (label=%s, source=%s)\n", p.Name, p.StatusLabel(), p.Source)
 	fmt.Printf("config_dir:    %s\n", p.ConfigDir)
 	fmt.Printf("keychain:      %s\n", p.KeychainService)
 	fmt.Printf("creds file:    %s\n", p.CredentialsFile)

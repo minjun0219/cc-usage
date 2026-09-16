@@ -33,6 +33,21 @@ func TestParseInputResetsAtFormats(t *testing.T) {
 	}
 }
 
+func TestParseInputWorkspace(t *testing.T) {
+	in, err := ParseInput([]byte(`{"workspace":{"current_dir":"/Users/x/dev/y"},"session_id":"s1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.Workspace.CurrentDir != "/Users/x/dev/y" || in.SessionID != "s1" {
+		t.Errorf("got %+v", in)
+	}
+	// workspace가 없는 payload도 그대로 통과해야 한다.
+	in, err = ParseInput([]byte(`{"model":{"display_name":"Opus"}}`))
+	if err != nil || in.Workspace.CurrentDir != "" {
+		t.Errorf("got %+v err=%v", in, err)
+	}
+}
+
 func TestParseInputRejectsEpochLeak(t *testing.T) {
 	in, _ := ParseInput([]byte(`{"rate_limits":{"five_hour":{"used_percentage":1776950400,"resets_at":1776950400}}}`))
 	if five, _ := in.StdinLimits(); five != nil {

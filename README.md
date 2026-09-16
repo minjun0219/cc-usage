@@ -3,7 +3,8 @@
 Claude Code statusline + 크레딧 guard. **개인 계정(Pro/Max)** 과 **회사 Team 계정**을 profile로 나눠 한 binary로 처리합니다.
 
 ```
-[work] · Sonnet · ctx 40% · 5h 100% 1h20m · 7d 55% 2d4h
+~/dev/workspaces/cc-usage  ⎇ main +3 !5 ⇡1
+[work] · Sonnet · ctx 40% · 5h 100% 1h20m→18:00 · 7d 55% 2d4h
 💳 $11.60 / $50.00 · 이번 window +$0.80 · 크레딧 소진 중
 ```
 
@@ -20,6 +21,7 @@ Claude Code statusline + 크레딧 guard. **개인 계정(Pro/Max)** 과 **회�
 - `cc-usage statusline`은 **network 호출을 하지 않습니다.** cache만 읽고, 갱신이 필요하면 `cc-usage refresh`를 detached로 띄운 뒤 즉시 종료합니다.
 - `refresh`는 profile별 lock으로 동시에 하나만 실행되고, 실패 시 1m → 32m(최대 30m) backoff, 429의 `Retry-After`를 존중합니다.
 - 한도 100%가 처음 관측된 시점의 `used_credits`를 baseline으로 저장해서 "이번 window에서 쓴 크레딧"을 계산합니다. 첫 조회 전 소진분은 포함되지 않습니다.
+- 경로 줄은 stdin의 `workspace.current_dir`에서 나옵니다. 브랜치 상태는 `git status --porcelain=v2 --branch --untracked-files=no` **한 번**으로 읽습니다 — 브랜치명, 변경 파일 수(`=` conflict / `+` staged / `!` unstaged), ahead(`⇡`)/behind(`⇣`). 개수는 porcelain=v2가 파일당 한 줄을 뱉고 `XY` 필드가 staged/unstaged를 구분해 주므로 추가 git 호출이 없습니다. untracked는 스캔 비용 때문에 세지 않습니다(`--untracked-files=no`). git repo가 아니거나 500ms를 넘기면 세그먼트만 빠집니다.
 - token은 **읽기 전용**입니다 (token_env → macOS keychain → `<config_dir>/.credentials.json`). 만료 시 갱신하지 않고, Claude Code가 다음 요청에서 갱신합니다.
 
 ## 설치
@@ -48,7 +50,7 @@ CLAUDE_CONFIG_DIR=~/.claude-work claude  # 회사
 
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
-| `label` | profile 이름 | statusline 앞에 표시 |
+| `label` | profile 이름 | statusline 앞에 `[…]`로 표시. `""`로 지정하면 세그먼트 자체를 생략 |
 | `config_dir` | `~/.claude` | 이 profile의 `CLAUDE_CONFIG_DIR` |
 | `source` | `auto` | `stdin` / `api` / `auto` |
 | `keychain_service` | `Claude Code-credentials` | macOS keychain 항목 이름 |
@@ -60,8 +62,32 @@ CLAUDE_CONFIG_DIR=~/.claude-work claude  # 회사
 | `currency` | `$` | 표시 통화 기호 |
 | `always_show_credits` | false | 한도 전에도 크레딧 줄 표시 (stdin 모드에서는 API 호출이 늘어남) |
 | `guard` | false | `cc-usage guard` 활성화 |
+| `extra_commands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |
 
 profile 선택 순서: `--profile` → `$CC_USAGE_PROFILE` → `$CLAUDE_CONFIG_DIR`와 `config_dir` 일치 → `default_profile`.
+
+#### `extra_commands` — 다른 도구의 줄 덧붙이기
+
+cc-usage가 모르는 세그먼트(로컬 위임 표시, todo 보드 등)는 코드가 아니라 설정으로 붙입니다. 각 항목의 stdout이 cc-usage 줄 **아래에 그대로** 출력됩니다.
+
+```json
+"extra_commands": [
+  { "command": ["my-statusline-tool", "line", "-s", "{{session_id}}"] },
+  {
+    "command": ["curl", "-sf", "--get",
+                "--data-urlencode", "cwd={{cwd}}",
+                "--data-urlencode", "session={{session_id}}",
+                "http://127.0.0.1:PORT/api/statusline"],
+    "timeout_ms": 300
+  }
+]
+```
+
+- `command`는 **argv 배열**입니다 (shell을 거치지 않으므로 따옴표·공백 문제가 없습니다).
+- placeholder는 `{{session_id}}`, `{{cwd}}` 둘입니다. **값이 빈 placeholder가 하나라도 있으면 그 명령은 실행하지 않습니다** — 예를 들어 session이 없는 호출에서는 위임 줄이 뜨지 않습니다.
+- 명령이 없거나, 0이 아닌 코드로 끝나거나, `timeout_ms`(기본 300ms)를 넘기면 **아무것도 출력하지 않습니다.** statusline은 어떤 경우에도 나머지 줄을 출력합니다. 위 `curl -sf`의 `-f`도 같은 목적입니다 — 이 라우트가 없는 구버전 데몬의 404 JSON 본문이 statusline에 새지 않게 합니다.
+- 항목들은 병렬로 실행되고, 출력은 설정에 적은 순서대로 붙습니다.
+- 여기서 무엇을 부를지는 전적으로 이 설정 파일에만 있습니다. cc-usage 코드에는 `my-statusline-tool`도 보드 데몬도 등장하지 않습니다.
 
 ### 3. keychain 항목 확인 (macOS)
 

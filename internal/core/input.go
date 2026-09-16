@@ -18,6 +18,9 @@ type Input struct {
 	ContextWindow struct {
 		UsedPercentage *float64 `json:"used_percentage"`
 	} `json:"context_window"`
+	Workspace struct {
+		CurrentDir string `json:"current_dir"`
+	} `json:"workspace"`
 	RateLimits *struct {
 		FiveHour *stdinWindow `json:"five_hour"`
 		SevenDay *stdinWindow `json:"seven_day"`

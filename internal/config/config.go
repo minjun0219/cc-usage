@@ -20,7 +20,7 @@ const (
 
 type Profile struct {
 	Name              string  `json:"-"`
-	Label             string  `json:"label"`
+	Label             *string `json:"label"`
 	ConfigDir         string  `json:"config_dir"`
 	Source            string  `json:"source"`
 	KeychainService   string  `json:"keychain_service"`
@@ -32,11 +32,49 @@ type Profile struct {
 	Currency          string  `json:"currency"`
 	AlwaysShowCredits bool    `json:"always_show_credits"`
 	Guard             bool    `json:"guard"`
+
+	// ExtraCommands append other tools' statusline output below cc-usage's own
+	// lines. 배(repo)별 사정을 코드가 아니라 설정에 두기 위한 창구다.
+	ExtraCommands []ExtraCommand `json:"extra_commands"`
+}
+
+// ExtraCommand is one external statusline segment. Command is an argv list (no
+// shell); the placeholders {{session_id}} and {{cwd}} are substituted in each
+// element. 값이 빈 placeholder가 하나라도 있으면 그 명령은 건너뛴다.
+type ExtraCommand struct {
+	Command   []string `json:"command"`
+	TimeoutMS int      `json:"timeout_ms"`
+}
+
+// Timeout bounds one extra command; statusline은 매 렌더마다 도니 짧게 둔다.
+func (e ExtraCommand) Timeout() time.Duration {
+	if e.TimeoutMS <= 0 {
+		return 300 * time.Millisecond
+	}
+	return time.Duration(e.TimeoutMS) * time.Millisecond
 }
 
 type Config struct {
 	DefaultProfile string              `json:"default_profile"`
 	Profiles       map[string]*Profile `json:"profiles"`
+}
+
+// StatusLabel is the "[…]" segment on the statusline. 설정에 없으면 profile 이름,
+// 빈 문자열로 지정하면 세그먼트 자체를 내지 않는다 — profile이 하나뿐인 설치에서
+// 매 줄 앞에 붙는 라벨은 구분이 아니라 노이즈다.
+func (p *Profile) StatusLabel() string {
+	if p.Label == nil {
+		return p.Name
+	}
+	return *p.Label
+}
+
+// Display is the profile name used in messages; 라벨을 껐어도 비지 않는다.
+func (p *Profile) Display() string {
+	if l := p.StatusLabel(); l != "" {
+		return l
+	}
+	return p.Name
 }
 
 func (p *Profile) Poll() time.Duration       { return time.Duration(p.PollSeconds) * time.Second }
@@ -82,9 +120,6 @@ func Load() (*Config, error) {
 }
 
 func (p *Profile) ApplyDefaults() {
-	if p.Label == "" {
-		p.Label = p.Name
-	}
 	if p.ConfigDir == "" {
 		p.ConfigDir = "~/.claude"
 	}
