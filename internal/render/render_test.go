@@ -53,7 +53,7 @@ func TestLinesSpending(t *testing.T) {
 		t.Errorf("line1: %s", lines[0])
 	}
 	// 금액은 **남은 값**이다 — 쓴 값 $10.80 이 아니라 $50.00-$10.80.
-	if !strings.Contains(lines[1], "$39.20 / $50.00") || !strings.Contains(lines[1], "+$0.80") || !strings.Contains(lines[1], "소진 중") {
+	if !strings.Contains(lines[1], "$39.20 ($50.00)") || !strings.Contains(lines[1], "+$0.80") || !strings.Contains(lines[1], "소진 중") {
 		t.Errorf("line2: %s", lines[1])
 	}
 }

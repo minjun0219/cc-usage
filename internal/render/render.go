@@ -316,8 +316,10 @@ func creditLine(v View, s Style) string {
 		tone = s.pctColor(cv.Used / *cv.Limit * 100)
 	}
 	t := s.c(dim, "💳") + " " + s.c(tone, amount)
+	// 한도는 괄호로 감싼다 — 한도 창의 "86% (3h 29m→14:40)" 과 같은 꼴이라
+	// 값 뒤의 괄호는 부가 정보라는 규칙이 줄 전체에서 한결같아진다.
 	if cv.Limit != nil {
-		t += s.c(dim, " / "+money(cur, *cv.Limit))
+		t += s.c(dim, " ("+money(cur, *cv.Limit)+")")
 	}
 	tail := ""
 	if cv.SpentWindow > 0 {
