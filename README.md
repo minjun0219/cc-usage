@@ -1,10 +1,10 @@
 # cc-usage
 
-Claude Code statusline + 크레딧 guard. **개인 계정(Pro/Max)** 과 **회사 Team 계정**을 profile로 나눠 한 binary로 처리합니다.
+Claude Code statusline + 크레딧 guard. 계정 하나를 상정합니다 — 설정도 cache도 한 벌입니다.
 
 ```
-~/dev/workspaces/cc-usage  ⎇ main +3 !5 ⇡1
-[work] · Sonnet · ctx 40% · 5h 100% 1h20m→18:00 · 7d 55% 2d4h
+~/dev/workspaces/cc-usage · ⎇ main +3 !5 ⇡1
+Sonnet · ctx 40% · 5h 0% (1h20m→18:00) · 7d 45% (2d4h)
 💳 $11.60 / $50.00 · 이번 window +$0.80 · 크레딧 소진 중
 ```
 
@@ -12,15 +12,16 @@ Claude Code statusline + 크레딧 guard. **개인 계정(Pro/Max)** 과 **회�
 
 ## 동작 방식
 
-| profile `source` | 5h/7d 출처 | usage API 호출 시점 |
+| `source` | 5h/7d 출처 | usage API 호출 시점 |
 | --- | --- | --- |
 | `stdin` (Pro/Max) | statusline stdin의 `rate_limits` | 5h 또는 7d가 **100%일 때만** (크레딧 조회) |
 | `api` (Team) | usage API | `poll_seconds` 주기 (기본 300초) |
 | `auto` | 최근 6시간 내 stdin에 `rate_limits`가 보였으면 stdin, 아니면 api | 위 규칙 |
 
 - `cc-usage statusline`은 **network를 기다리지 않습니다.** usage API는 이 경로에서 호출하지 않고, 갱신이 필요하면 `cc-usage refresh`를 detached로 띄운 뒤 즉시 종료합니다. 로컬 subprocess(`git status`, `extra_commands`)는 타임아웃을 걸고 부르며, 느리거나 실패하면 그 세그먼트만 빠집니다. `extra_commands`에 network를 타는 명령을 넣는 것은 설정하는 쪽의 선택이고, 그 지연은 타임아웃이 막습니다.
-- `refresh`는 profile별 lock으로 동시에 하나만 실행되고, 실패 시 1m → 32m(최대 30m) backoff, 429의 `Retry-After`를 존중합니다.
+- `refresh`는 lock으로 동시에 하나만 실행되고, 실패 시 1m → 32m(최대 30m) backoff, 429의 `Retry-After`를 존중합니다.
 - 한도 100%가 처음 관측된 시점의 `used_credits`를 baseline으로 저장해서 "이번 window에서 쓴 크레딧"을 계산합니다. 첫 조회 전 소진분은 포함되지 않습니다.
+- `5h`/`7d` 숫자는 **남은 비율**입니다(100 − 사용률). 쓴 양보다 남은 양이 "지금 뭘 할 수 있나"에 바로 답하기 때문입니다. 색은 사용률로 고르므로 숫자가 작아질수록 빨개집니다. 괄호는 리셋까지 남은 시간이고, 하루를 넘으면 어느 날인지 모호해지므로 시각을 빼고 남은 시간만 냅니다.
 - 경로 줄은 stdin의 `workspace.current_dir`에서 나옵니다. 브랜치 상태는 `git status --porcelain=v2 --branch --untracked-files=no` **한 번**으로 읽습니다 — 브랜치명, 변경 파일 수(`=` conflict / `+` staged / `!` unstaged), ahead(`⇡`)/behind(`⇣`). 개수는 porcelain=v2가 파일당 한 줄을 뱉고 `XY` 필드가 staged/unstaged를 구분해 주므로 추가 git 호출이 없습니다. untracked는 스캔 비용 때문에 세지 않습니다(`--untracked-files=no`). git repo가 아니거나 500ms를 넘기면 세그먼트만 빠집니다.
 - token은 **읽기 전용**입니다 (token_env → macOS keychain → `<config_dir>/.credentials.json`). 만료 시 갱신하지 않고, Claude Code가 다음 요청에서 갱신합니다.
 
@@ -33,25 +34,13 @@ make install            # ~/.local/bin/cc-usage
 
 ## 설정
 
-### 1. 계정 분리 (권장)
-
-두 계정은 `CLAUDE_CONFIG_DIR`로 분리하는 것을 전제로 합니다.
-
-```bash
-claude                                   # 개인 (~/.claude)
-CLAUDE_CONFIG_DIR=~/.claude-work claude  # 회사
-```
-
-`/login`으로 같은 config dir에서 계정을 바꿔 쓰면 credential이 하나라 profile 구분이 불가능합니다.
-
-### 2. `~/.config/cc-usage/config.json`
+### 1. `~/.config/cc-usage/config.json`
 
 [`examples/config.json`](examples/config.json) 참고. 주요 필드:
 
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
-| `label` | profile 이름 | statusline 앞에 `[…]`로 표시. `""`로 지정하면 세그먼트 자체를 생략 |
-| `config_dir` | `~/.claude` | 이 profile의 `CLAUDE_CONFIG_DIR` |
+| `config_dir` | `~/.claude` | Claude Code의 `CLAUDE_CONFIG_DIR` |
 | `source` | `auto` | `stdin` / `api` / `auto` |
 | `keychain_service` | `Claude Code-credentials` | macOS keychain 항목 이름 |
 | `credentials_file` | `<config_dir>/.credentials.json` | Linux 등 keychain이 없을 때 |
@@ -66,7 +55,15 @@ CLAUDE_CONFIG_DIR=~/.claude-work claude  # 회사
 | `guard` | false | `cc-usage guard` 활성화 |
 | `extra_commands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |
 
-profile 선택 순서: `--profile` → `$CC_USAGE_PROFILE` → `$CLAUDE_CONFIG_DIR`와 `config_dir` 일치 → `default_profile`.
+머신이 여럿이면(회사·집) **각 머신에 `config.json`을 하나씩** 둡니다. 계정 타입이 달라도 `source`만 각자 적으면 됩니다 — 회사 Team 계정은 `api`, 집 Pro/Max는 `stdin`. 나머지 설정(색은 코드, 표기는 코드)은 같은 바이너리를 쓰는 한 저절로 같습니다.
+
+한 머신에서 계정을 여럿 보려면 설정을 나누는 게 아니라 **프로세스를 나눕니다** — `CC_USAGE_CONFIG`와 `XDG_CACHE_HOME`을 다른 경로로 주면 설정도 cache도 통째로 갈립니다.
+
+```bash
+CC_USAGE_CONFIG=~/.config/cc-usage/work.json \
+XDG_CACHE_HOME=~/.cache/cc-usage-work \
+  cc-usage statusline
+```
 
 #### `alert_percent` / `notify` — 한도 임박 알리기
 
@@ -114,18 +111,18 @@ cc-usage가 모르는 세그먼트(로컬 위임 표시, todo 보드 등)는 코
 - 항목들은 병렬로 실행되고, 출력은 설정에 적은 순서대로 붙습니다.
 - 여기서 무엇을 부를지는 전적으로 이 설정 파일에만 있습니다. cc-usage 코드에는 `my-statusline-tool`도 보드 데몬도 등장하지 않습니다.
 
-### 3. keychain 항목 확인 (macOS)
+### 2. keychain 항목 확인 (macOS)
 
 ```bash
-cc-usage doctor --profile work
+cc-usage doctor
 ```
 
-`keychain 후보` 목록에서 회사 계정 항목을 골라 `keychain_service`에 넣으세요. 두 profile이 같은 항목을 가리키면 경고가 표시됩니다. `CLAUDE_CONFIG_DIR`를 쓸 때 keychain 항목 이름이 어떻게 정해지는지는 공식 문서로 확인하지 못했으므로, 반드시 `doctor`로 확인하는 것을 권장합니다. 처음 접근 시 keychain 허용 창이 뜰 수 있습니다.
+`keychain 후보` 목록에서 맞는 항목을 골라 `keychain_service`에 넣으세요. `CLAUDE_CONFIG_DIR`를 쓸 때 keychain 항목 이름이 어떻게 정해지는지는 공식 문서로 확인하지 못했으므로, 반드시 `doctor`로 확인하는 것을 권장합니다. 처음 접근 시 keychain 허용 창이 뜰 수 있습니다.
 
-### 4. 필드 검증 (처음 한 번)
+### 3. 필드 검증 (처음 한 번)
 
 ```bash
-cc-usage probe --profile work
+cc-usage probe
 ```
 
 원본 응답을 보고 다음을 확인하세요.
@@ -135,16 +132,15 @@ cc-usage probe --profile work
 
 rate limit이 낮으니 반복 실행은 피하세요.
 
-### 5. Claude Code settings
+### 4. Claude Code settings
 
-- 개인: [`examples/settings.personal.json`](examples/settings.personal.json) → `~/.claude/settings.json`
-- 회사: [`examples/settings.work.json`](examples/settings.work.json) → `~/.claude-work/settings.json`
+[`examples/settings.json`](examples/settings.json) → `~/.claude/settings.json`
 
 `refreshInterval: 60`은 cache를 다시 읽는 주기일 뿐, API 호출 주기가 아닙니다.
 
 ## Guard (선택)
 
-`guard: true`인 profile에서 `UserPromptSubmit` hook으로 등록하면, 다음 경우 prompt를 차단합니다 (exit 2).
+`guard: true`로 두고 `UserPromptSubmit` hook으로 등록하면, 다음 경우 prompt를 차단합니다 (exit 2).
 
 - 5h 또는 7d가 100%이고, 크레딧이 켜져 있거나 아직 모르는 경우
 - 최근 15분 내 `used_credits` 증가가 관측된 경우
@@ -152,8 +148,8 @@ rate limit이 낮으니 반복 실행은 피하세요.
 크레딧을 쓰고 싶을 때:
 
 ```bash
-cc-usage allow 30m --profile work   # 30분 허용
-cc-usage allow off --profile work   # 즉시 다시 차단
+cc-usage allow 30m   # 30분 허용
+cc-usage allow off   # 즉시 다시 차단
 ```
 
 한계:
@@ -164,16 +160,16 @@ cc-usage allow off --profile work   # 즉시 다시 차단
 ## 명령
 
 ```
-cc-usage statusline [--profile NAME]
-cc-usage guard      [--profile NAME]
-cc-usage allow      [DURATION|off] [--profile NAME]
-cc-usage refresh    [--profile NAME]
-cc-usage probe      [--profile NAME]
-cc-usage doctor     [--profile NAME]
+cc-usage statusline
+cc-usage guard
+cc-usage allow [DURATION|off]
+cc-usage refresh
+cc-usage probe
+cc-usage doctor
 cc-usage version
 ```
 
-`NO_COLOR=1`이면 색상을 끕니다. cache는 `~/.cache/cc-usage/<profile>/` (0600).
+`NO_COLOR=1`이면 색상을 끕니다. cache는 `~/.cache/cc-usage/` (0600).
 
 ## 확장 아이디어
 

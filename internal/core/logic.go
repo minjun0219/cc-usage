@@ -27,7 +27,7 @@ type Limits struct {
 }
 
 // UseStdin reports whether limits should come from stdin for this profile.
-func UseStdin(p *config.Profile, st *store.StateFile, stdinPresent bool, now time.Time) bool {
+func UseStdin(p *config.Config, st *store.StateFile, stdinPresent bool, now time.Time) bool {
 	switch p.Source {
 	case config.SourceStdin:
 		return true
@@ -89,7 +89,7 @@ func windowKey(name string, w *store.Window) string {
 }
 
 // NeedRefresh decides whether statusline should spawn `cc-usage refresh`.
-func NeedRefresh(p *config.Profile, useStdin bool, lim Limits, st *store.StateFile, uf *store.UsageFile, now time.Time) bool {
+func NeedRefresh(p *config.Config, useStdin bool, lim Limits, st *store.StateFile, uf *store.UsageFile, now time.Time) bool {
 	if now.Before(uf.BackoffUntil) || now.Sub(st.SpawnedAt) < minSpawnGap || now.Sub(uf.LastAttempt) < minSpawnGap {
 		return false
 	}
@@ -172,7 +172,7 @@ type CreditView struct {
 	Spending    bool
 }
 
-func Credits(p *config.Profile, lim Limits, uf *store.UsageFile, now time.Time) CreditView {
+func Credits(p *config.Config, lim Limits, uf *store.UsageFile, now time.Time) CreditView {
 	v := CreditView{}
 	credits, ok := usedCredits(uf.Usage)
 	hit, _ := lim.Exhausted()
@@ -201,7 +201,7 @@ type GuardDecision struct {
 	Reason string
 }
 
-func Guard(p *config.Profile, lim Limits, uf *store.UsageFile, allow *store.AllowFile, now time.Time) GuardDecision {
+func Guard(p *config.Config, lim Limits, uf *store.UsageFile, allow *store.AllowFile, now time.Time) GuardDecision {
 	if !p.Guard || now.Before(allow.AllowUntil) {
 		return GuardDecision{}
 	}

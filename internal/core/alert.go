@@ -38,7 +38,7 @@ type Alert struct {
 
 // Alerts reports the current alert and updates st. dirty가 true면 state를 써야
 // 한다. st를 갱신하는 쪽이 엣지를 소비하므로, 다음 렌더에서는 Fired가 꺼진다.
-func Alerts(p *config.Profile, lim Limits, st *store.StateFile, now time.Time) (Alert, bool) {
+func Alerts(p *config.Config, lim Limits, st *store.StateFile, now time.Time) (Alert, bool) {
 	level, name, pct, wkey := worstWindow(p, lim)
 	if level == AlertNone {
 		if st.AlertKey == "" {
@@ -64,7 +64,7 @@ func Alerts(p *config.Profile, lim Limits, st *store.StateFile, now time.Time) (
 
 // worstWindow picks the most urgent window: 소진이 임박을 이기고, 같은 단계면
 // 7d가 5h보다 아프다 (풀리는 데 더 오래 걸린다).
-func worstWindow(p *config.Profile, lim Limits) (AlertLevel, string, float64, string) {
+func worstWindow(p *config.Config, lim Limits) (AlertLevel, string, float64, string) {
 	var (
 		best AlertLevel
 		name string

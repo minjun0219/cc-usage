@@ -21,15 +21,18 @@ func DefaultStyle() Style {
 }
 
 const (
-	reset  = "\033[0m"
-	dim    = "\033[2m"
-	green  = "\033[32m"
-	cyan   = "\033[36m"
-	blue   = "\033[34m"
-	yellow = "\033[33m"
-	red    = "\033[31m"
-	redBG  = "\033[41;97m"
-	bold   = "\033[1m"
+	reset = "\033[0m"
+	// dim은 밝기 속성(2)이 아니라 gray(90)다 — 터미널에 따라 2가 아예 무시되거나
+	// 과하게 어두워진다. 90은 기존 셸 statusline이 쓰던 값이고 눈으로 맞춰 둔 것이다.
+	dim     = "\033[90m"
+	green   = "\033[32m"
+	cyan    = "\033[36m"
+	blue    = "\033[1;34m"
+	magenta = "\033[1;35m"
+	yellow  = "\033[33m"
+	red     = "\033[31m"
+	redBG   = "\033[41;97m"
+	bold    = "\033[1m"
 )
 
 func (s Style) c(code, text string) string {
@@ -40,7 +43,7 @@ func (s Style) c(code, text string) string {
 }
 
 type View struct {
-	Profile    *config.Profile
+	Config     *config.Config
 	Dir        string      // workspace.current_dir (빈 값이면 경로 줄 생략)
 	Git        *git.Status // nil이면 git repo가 아니거나 조회 실패 — 세그먼트 생략
 	Model      string
@@ -56,11 +59,8 @@ type View struct {
 // row, and an optional credit row.
 func Lines(v View, s Style) []string {
 	var parts []string
-	if l := v.Profile.StatusLabel(); l != "" {
-		parts = append(parts, s.c(dim, "["+l+"]"))
-	}
 	if v.Model != "" {
-		parts = append(parts, v.Model)
+		parts = append(parts, s.c(magenta, v.Model))
 	}
 	if v.ContextPct != nil {
 		parts = append(parts, "ctx "+s.c(pctColor(*v.ContextPct), fmt.Sprintf("%.0f%%", *v.ContextPct)))
@@ -85,9 +85,9 @@ func Lines(v View, s Style) []string {
 		lines = append(lines, cl)
 	}
 	if len(lines) == 0 {
-		// label을 숨긴 profile에서 stdin도 cache도 비면 모든 세그먼트가 빈다.
-		// statusline이 통째로 비면 무엇이 도는지조차 알 수 없으므로 최소 한 줄.
-		lines = append(lines, s.c(dim, "["+v.Profile.Display()+"]"))
+		// stdin도 cache도 비면 모든 세그먼트가 빈다. statusline이 통째로 비면
+		// 무엇이 도는지조차 알 수 없으므로 최소 한 줄은 낸다.
+		lines = append(lines, s.c(dim, "[cc-usage]"))
 	}
 	return lines
 }
@@ -98,7 +98,7 @@ func dirLine(v View, s Style) string {
 	}
 	t := s.c(cyan, AbbrevHome(v.Dir))
 	if b := branchText(v.Git, s); b != "" {
-		t += "  " + b
+		t += s.c(dim, " · ") + b
 	}
 	return t
 }
@@ -167,10 +167,13 @@ func AbbrevHome(p string) string {
 	return p
 }
 
+// windowText renders one limit window as **얼마나 남았나**(100-사용률)다. 쓴 양보다
+// 남은 양이 지금 무엇을 할 수 있는지에 바로 답한다. 색은 그대로 사용률로 고르므로
+// (pctColor·alertStyle) 숫자가 작아질수록 빨개진다 — 숫자와 색이 같은 방향이다.
 func windowText(name string, w *store.Window, v View, s Style) string {
-	t := name + " " + s.c(alertStyle(name, w, v.Alert), fmt.Sprintf("%.0f%%", w.Percent))
+	t := name + " " + s.c(alertStyle(name, w, v.Alert), fmt.Sprintf("%.0f%%", 100-w.Percent))
 	if !w.ResetsAt.IsZero() && w.ResetsAt.After(v.Now) {
-		t += " " + s.c(dim, resetText(w.ResetsAt, v.Now))
+		t += " " + s.c(dim, "("+resetText(w.ResetsAt, v.Now)+")")
 	}
 	return t
 }
@@ -223,7 +226,7 @@ func creditLine(v View, s Style) string {
 	if !cv.Show {
 		return ""
 	}
-	cur := v.Profile.Currency
+	cur := v.Config.Currency
 	if !cv.Enabled {
 		if v.Usage.Usage != nil && v.Usage.Usage.Extra != nil && !v.Usage.Usage.Extra.Enabled {
 			return s.c(dim, "💳 크레딧 비활성 — 한도 reset까지 대기")
@@ -268,18 +271,25 @@ func shortErr(e string) string {
 	return e
 }
 
-// Duration formats a positive duration compactly: 45m, 1h20m, 2d4h.
+// Duration formats a positive duration compactly: 45m, 1h 20m, 2d 4h.
+// 단위 사이를 띄우는 건 눈이 숫자와 단위를 한 덩어리로 묶어 읽기 때문이다 —
+// 붙여 쓰면 "1h20m"이 한 토큰으로 보여 자릿수를 다시 세게 된다.
 func Duration(d time.Duration) string {
 	if d < time.Minute {
 		return "<1m"
 	}
 	m := int(d.Minutes())
 	days, hours, mins := m/1440, (m%1440)/60, m%60
+	// 0인 아랫단위는 떼어 낸다 — "1d 0h"의 0h는 자리만 먹고 아무것도 말하지 않는다.
 	switch {
+	case days > 0 && hours > 0:
+		return fmt.Sprintf("%dd %dh", days, hours)
 	case days > 0:
-		return fmt.Sprintf("%dd%dh", days, hours)
+		return fmt.Sprintf("%dd", days)
+	case hours > 0 && mins > 0:
+		return fmt.Sprintf("%dh %dm", hours, mins)
 	case hours > 0:
-		return fmt.Sprintf("%dh%dm", hours, mins)
+		return fmt.Sprintf("%dh", hours)
 	default:
 		return fmt.Sprintf("%dm", mins)
 	}

@@ -1,14 +1,14 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "~/.local/bin/cc-usage statusline --profile work",
+    "command": "~/.local/bin/cc-usage statusline",
     "refreshInterval": 60
   },
   "hooks": {
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "~/.local/bin/cc-usage guard --profile work" }
+          { "type": "command", "command": "~/.local/bin/cc-usage guard" }
         ]
       }
     ]

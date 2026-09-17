@@ -14,16 +14,14 @@ trap 'rm -rf "$DIR"' EXIT
 export XDG_CACHE_HOME="$DIR/cache" CC_USAGE_CONFIG="$DIR/config.json"
 
 cat > "$DIR/config.json" <<JSON
-{"default_profile":"preview","profiles":{"preview":{
-  "label":"", "source":"stdin", "alert_percent":90,
-  "keychain_service":"cc-usage-preview-absent",
-  "credentials_file":"$DIR/absent.json"
-}}}
+{"source":"stdin", "alert_percent":90,
+ "keychain_service":"cc-usage-preview-absent",
+ "credentials_file":"$DIR/absent.json"}
 JSON
 
 NOW=$(date +%s)
-mkdir -p "$XDG_CACHE_HOME/cc-usage/preview"
-cat > "$XDG_CACHE_HOME/cc-usage/preview/usage.json" <<JSON
+mkdir -p "$XDG_CACHE_HOME/cc-usage"
+cat > "$XDG_CACHE_HOME/cc-usage/usage.json" <<JSON
 {"usage":{"fetched_at":"$(date -u -r "$NOW" +%Y-%m-%dT%H:%M:%SZ)",
   "extra":{"enabled":true,"used_credits":1160,"monthly_limit":5000}},
  "baseline":{"window_key":"5h","credits":1080,"at":"$(date -u -r "$NOW" +%Y-%m-%dT%H:%M:%SZ)"}}

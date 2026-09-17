@@ -32,7 +32,7 @@ type credentials struct {
 }
 
 // Load resolves a token: token_env > macOS keychain > credentials file.
-func Load(ctx context.Context, p *config.Profile) (*Token, error) {
+func Load(ctx context.Context, p *config.Config) (*Token, error) {
 	if p.TokenEnv != "" {
 		if v := strings.TrimSpace(os.Getenv(p.TokenEnv)); v != "" {
 			return &Token{AccessToken: v, Source: "env:" + p.TokenEnv}, nil

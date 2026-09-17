@@ -6,7 +6,7 @@ Claude Code statusline + 크레딧 guard. Go 표준 라이브러리만 사용 (�
 
 ```
 cmd/cc-usage/          subcommand 진입점 (statusline, guard, allow, refresh, probe, doctor)
-internal/config/    profile 로딩, 기본값, profile 선택
+internal/config/    설정 로딩, 기본값
 internal/store/     cache 파일 모델, atomic write, flock
 internal/auth/      token 읽기 (read-only), keychain 후보 목록
 internal/api/       비공식 /api/oauth/usage 호출 및 파싱

@@ -27,29 +27,9 @@ func TestNotifyOn(t *testing.T) {
 	}
 }
 
-func TestStatusLabel(t *testing.T) {
-	empty, named := "", "work"
-	cases := []struct {
-		p              *Profile
-		label, display string
-	}{
-		{&Profile{Name: "personal"}, "personal", "personal"},        // 설정 없음 → profile 이름
-		{&Profile{Name: "personal", Label: &empty}, "", "personal"}, // 빈 값 → 세그먼트 생략
-		{&Profile{Name: "w", Label: &named}, "work", "work"},
-	}
-	for _, c := range cases {
-		if got := c.p.StatusLabel(); got != c.label {
-			t.Errorf("StatusLabel: got %q want %q", got, c.label)
-		}
-		if got := c.p.Display(); got != c.display {
-			t.Errorf("Display는 비면 안 된다: got %q want %q", got, c.display)
-		}
-	}
-}
-
 func TestAlertPercentDefaults(t *testing.T) {
 	for in, want := range map[float64]float64{0: 90, 80: 80, -1: 0, 101: 0} {
-		p := &Profile{Name: "p", AlertPercent: in}
+		p := &Config{AlertPercent: in}
 		p.ApplyDefaults()
 		if p.AlertPercent != want {
 			t.Errorf("alert_percent %v → %v, want %v", in, p.AlertPercent, want)
@@ -59,7 +39,7 @@ func TestAlertPercentDefaults(t *testing.T) {
 
 func TestNotifyStateHidesArgs(t *testing.T) {
 	secret := "https://hooks.example.com/T000/B000/XXXXsecretXXXX"
-	p := &Profile{Name: "p", Notify: &Notify{Command: []string{"curl", "-d", "msg", secret}}}
+	p := &Config{Notify: &Notify{Command: []string{"curl", "-d", "msg", secret}}}
 	got := p.NotifyState()
 	if strings.Contains(got, secret) {
 		t.Errorf("webhook URL이 doctor 출력에 남으면 안 된다: %s", got)

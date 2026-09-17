@@ -115,5 +115,5 @@ cc-usage version
 ## API 없이 end-to-end 확인
 
 - `CC_USAGE_API_URL`로 가짜 서버 지정 (테스트 전용)
-- profile에 `token_env`를 지정해 keychain 우회
+- 설정에 `token_env`를 지정해 keychain 우회
 - `HOME` / `XDG_CACHE_HOME`을 임시 디렉터리로 지정

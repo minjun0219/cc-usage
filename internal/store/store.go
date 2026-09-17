@@ -1,4 +1,4 @@
-// Package store persists per-profile cache files with atomic writes.
+// Package store persists cache files with atomic writes.
 package store
 
 import (
@@ -70,18 +70,20 @@ type AllowFile struct {
 	AllowUntil time.Time `json:"allow_until"`
 }
 
-func Dir(p *config.Profile) string {
+// Dir is the cache directory. 계정을 나누는 축은 여기가 아니라 XDG_CACHE_HOME 이다
+// — 다른 계정으로 돌리려면 설정과 cache 를 통째로 다른 경로에 두고 프로세스를 나눈다.
+func Dir() string {
 	base := os.Getenv("XDG_CACHE_HOME")
 	if base == "" {
 		base = config.Expand("~/.cache")
 	}
-	return filepath.Join(base, "cc-usage", p.Name)
+	return filepath.Join(base, "cc-usage")
 }
 
-func UsagePath(p *config.Profile) string { return filepath.Join(Dir(p), "usage.json") }
-func StatePath(p *config.Profile) string { return filepath.Join(Dir(p), "state.json") }
-func AllowPath(p *config.Profile) string { return filepath.Join(Dir(p), "allow.json") }
-func LockPath(p *config.Profile) string  { return filepath.Join(Dir(p), "refresh.lock") }
+func UsagePath() string { return filepath.Join(Dir(), "usage.json") }
+func StatePath() string { return filepath.Join(Dir(), "state.json") }
+func AllowPath() string { return filepath.Join(Dir(), "allow.json") }
+func LockPath() string  { return filepath.Join(Dir(), "refresh.lock") }
 
 // Read decodes a JSON file; a missing file leaves v untouched and returns nil.
 func Read(path string, v any) error {

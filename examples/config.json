@@ -1,50 +1,32 @@
 {
-  "default_profile": "personal",
-  "profiles": {
-    "personal": {
-      "label": "me",
-      "config_dir": "~/.claude",
-      "source": "stdin",
-      "extra_commands": [
-        {
-          "command": [
-            "my-statusline-tool",
-            "line",
-            "-s",
-            "{{session_id}}"
-          ]
-        },
-        {
-          "command": [
-            "curl",
-            "-sf",
-            "--get",
-            "--data-urlencode",
-            "cwd={{cwd}}",
-            "--data-urlencode",
-            "session={{session_id}}",
-            "http://127.0.0.1:PORT/api/statusline"
-          ],
-          "timeout_ms": 300
-        }
-      ],
-      "alert_percent": 90,
-      "notify": {
-        "enabled": true,
-        "command": [
-          "osascript",
-          "-e",
-          "display notification \"{{message}}\" with title \"Claude 한도\" subtitle \"{{window}} {{percent}}%\""
-        ]
-      }
+  "config_dir": "~/.claude",
+  "source": "stdin",
+  "alert_percent": 90,
+  "guard": false,
+  "extra_commands": [
+    {
+      "command": ["my-statusline-tool", "line", "-s", "{{session_id}}"]
     },
-    "work": {
-      "label": "work",
-      "config_dir": "~/.claude-work",
-      "source": "api",
-      "keychain_service": "Claude Code-credentials-XXXXXXXX",
-      "poll_seconds": 300,
-      "guard": true
+    {
+      "command": [
+        "curl",
+        "-sf",
+        "--get",
+        "--data-urlencode",
+        "cwd={{cwd}}",
+        "--data-urlencode",
+        "session={{session_id}}",
+        "http://127.0.0.1:PORT/api/statusline"
+      ],
+      "timeout_ms": 300
     }
+  ],
+  "notify": {
+    "enabled": true,
+    "command": [
+      "osascript",
+      "-e",
+      "display notification \"{{message}}\" with title \"Claude 한도\" subtitle \"{{window}} {{percent}}%\""
+    ]
   }
 }

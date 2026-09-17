@@ -29,12 +29,12 @@ var version = "dev"
 const usage = `cc-usage — Claude Code statusline / 크레딧 guard
 
 사용법:
-  cc-usage statusline [--profile NAME]   statusLine command (stdin JSON → stdout)
-  cc-usage guard      [--profile NAME]   UserPromptSubmit hook (한도 소진 시 exit 2)
-  cc-usage allow      [DURATION|off] [--profile NAME]   guard 일시 해제 (기본 30m)
-  cc-usage refresh    [--profile NAME]   usage API 1회 조회 (statusline이 자동 호출)
-  cc-usage probe      [--profile NAME]   usage API 원본 응답 출력 (필드 확인용)
-  cc-usage doctor     [--profile NAME]   profile/token/cache/keychain 진단
+  cc-usage statusline          statusLine command (stdin JSON → stdout)
+  cc-usage guard               UserPromptSubmit hook (한도 소진 시 exit 2)
+  cc-usage allow [DURATION|off]   guard 일시 해제 (기본 30m)
+  cc-usage refresh             usage API 1회 조회 (statusline이 자동 호출)
+  cc-usage probe               usage API 원본 응답 출력 (필드 확인용)
+  cc-usage doctor              설정/token/cache/keychain 진단
   cc-usage version
 `
 
@@ -72,33 +72,18 @@ func main() {
 	}
 }
 
-// profileFlags parses --profile and returns the resolved profile plus remaining args.
-func profileFlags(name string, args []string) (*config.Profile, []string, error) {
+// loadConfig parses the (flagless) subcommand args and loads the config.
+func loadConfig(name string, args []string) (*config.Config, []string, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	prof := fs.String("profile", "", "profile name")
-	// allow positional args before flags (e.g. `allow 1h --profile work`)
-	var positional []string
-	for len(args) > 0 {
-		if err := fs.Parse(args); err != nil {
-			return nil, nil, err
-		}
-		args = fs.Args()
-		if len(args) == 0 {
-			break
-		}
-		positional = append(positional, args[0])
-		args = args[1:]
-	}
-	cfg, err := config.Load()
-	if err != nil {
+	if err := fs.Parse(args); err != nil {
 		return nil, nil, err
 	}
-	p, err := cfg.Resolve(*prof)
-	return p, positional, err
+	cfg, err := config.Load()
+	return cfg, fs.Args(), err
 }
 
 func runStatusline(args []string) error {
-	p, _, err := profileFlags("statusline", args)
+	p, _, err := loadConfig("statusline", args)
 	if err != nil {
 		fmt.Println("[cc-usage] " + err.Error()) // statusline must still print something
 		return nil
@@ -109,8 +94,8 @@ func runStatusline(args []string) error {
 
 	var st store.StateFile
 	var uf store.UsageFile
-	_ = store.Read(store.StatePath(p), &st)
-	_ = store.Read(store.UsagePath(p), &uf)
+	_ = store.Read(store.StatePath(), &st)
+	_ = store.Read(store.UsagePath(), &uf)
 
 	five, seven := in.StdinLimits()
 	stdinPresent := five != nil || seven != nil
@@ -122,7 +107,7 @@ func runStatusline(args []string) error {
 		st.ObservedAt, st.StdinLimitsSeen, st.FiveHour, st.SevenDay = now, now, five, seven
 		dirty = true
 	}
-	if core.NeedRefresh(p, useStdin, lim, &st, &uf, now) && spawnRefresh(p) == nil {
+	if core.NeedRefresh(p, useStdin, lim, &st, &uf, now) && spawnRefresh() == nil {
 		st.SpawnedAt = now
 		dirty = true
 	}
@@ -134,7 +119,7 @@ func runStatusline(args []string) error {
 	// 조건을 새 엣지로 봐서 알림이 폭주한다.
 	stateOK := true
 	if dirty {
-		stateOK = store.Write(store.StatePath(p), &st) == nil
+		stateOK = store.Write(store.StatePath(), &st) == nil
 	}
 	if alert.Fired && stateOK {
 		spawnNotify(p, alert) // 실패해도 statusline은 그대로 간다.
@@ -147,7 +132,7 @@ func runStatusline(args []string) error {
 	}
 
 	lines := render.Lines(render.View{
-		Profile:    p,
+		Config:     p,
 		Dir:        dir,
 		Git:        gs,
 		Model:      in.Model.DisplayName,
@@ -167,12 +152,12 @@ func runStatusline(args []string) error {
 }
 
 // spawnRefresh starts `cc-usage refresh` detached so it survives statusline cancellation.
-func spawnRefresh(p *config.Profile) error {
+func spawnRefresh() error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "refresh", "--profile", p.Name)
+	cmd := exec.Command(exe, "refresh")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
@@ -181,13 +166,13 @@ func spawnRefresh(p *config.Profile) error {
 	return cmd.Process.Release()
 }
 
-// spawnNotify fires the profile's notify command detached, once per 단계.
+// spawnNotify fires the configured notify command detached, once per 단계.
 // 어떤 알림 수단인지는 설정에만 있다 — 코드는 argv와 치환만 안다.
-func spawnNotify(p *config.Profile, a core.Alert) {
-	if !p.Notify.On() {
+func spawnNotify(c *config.Config, a core.Alert) {
+	if !c.Notify.On() {
 		return
 	}
-	argv, ok := extra.Expand(p.Notify.Command, map[string]string{
+	argv, ok := extra.Expand(c.Notify.Command, map[string]string{
 		"{{level}}":   a.LevelName(),
 		"{{window}}":  a.Window,
 		"{{percent}}": fmt.Sprintf("%.0f", a.Percent),
@@ -205,11 +190,11 @@ func spawnNotify(p *config.Profile, a core.Alert) {
 }
 
 func runRefresh(args []string) error {
-	p, _, err := profileFlags("refresh", args)
+	p, _, err := loadConfig("refresh", args)
 	if err != nil {
 		return err
 	}
-	unlock, ok, err := store.TryLock(store.LockPath(p))
+	unlock, ok, err := store.TryLock(store.LockPath())
 	if err != nil || !ok {
 		return err // another refresh is running
 	}
@@ -218,8 +203,8 @@ func runRefresh(args []string) error {
 	now := time.Now()
 	var uf store.UsageFile
 	var st store.StateFile
-	_ = store.Read(store.UsagePath(p), &uf)
-	_ = store.Read(store.StatePath(p), &st)
+	_ = store.Read(store.UsagePath(), &uf)
+	_ = store.Read(store.StatePath(), &st)
 	if now.Before(uf.BackoffUntil) {
 		return nil
 	}
@@ -228,7 +213,7 @@ func runRefresh(args []string) error {
 	tok, err := auth.Load(ctx, p)
 	if err != nil {
 		core.ApplyFailure(&uf, err, 0, now)
-		return errors.Join(err, store.Write(store.UsagePath(p), &uf))
+		return errors.Join(err, store.Write(store.UsagePath(), &uf))
 	}
 	u, err := api.Fetch(ctx, tok.AccessToken)
 	if err != nil {
@@ -238,7 +223,7 @@ func runRefresh(args []string) error {
 			ra = rl.RetryAfter
 		}
 		core.ApplyFailure(&uf, err, ra, now)
-		return errors.Join(err, store.Write(store.UsagePath(p), &uf))
+		return errors.Join(err, store.Write(store.UsagePath(), &uf))
 	}
 
 	useStdin := core.UseStdin(p, &st, false, now)
@@ -247,12 +232,12 @@ func runRefresh(args []string) error {
 	lim := core.Merge(useStdin, nil, nil, &st, &tmp, now)
 	hit, key := lim.Exhausted()
 	core.ApplyFetch(&uf, u, hit, key, now)
-	return store.Write(store.UsagePath(p), &uf)
+	return store.Write(store.UsagePath(), &uf)
 }
 
 func runGuard(args []string) error {
 	_, _ = io.Copy(io.Discard, io.LimitReader(os.Stdin, 4<<20))
-	p, _, err := profileFlags("guard", args)
+	p, _, err := loadConfig("guard", args)
 	if err != nil {
 		return nil // never block on misconfiguration
 	}
@@ -260,9 +245,9 @@ func runGuard(args []string) error {
 	var st store.StateFile
 	var uf store.UsageFile
 	var allow store.AllowFile
-	_ = store.Read(store.StatePath(p), &st)
-	_ = store.Read(store.UsagePath(p), &uf)
-	_ = store.Read(store.AllowPath(p), &allow)
+	_ = store.Read(store.StatePath(), &st)
+	_ = store.Read(store.UsagePath(), &uf)
+	_ = store.Read(store.AllowPath(), &allow)
 
 	useStdin := core.UseStdin(p, &st, false, now)
 	lim := core.Merge(useStdin, nil, nil, &st, &uf, now)
@@ -270,13 +255,13 @@ func runGuard(args []string) error {
 	if !d.Block {
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "[cc-usage:%s] %s.\n계속하려면 터미널에서: cc-usage allow 30m --profile %s\n", p.Display(), d.Reason, p.Name)
+	fmt.Fprintf(os.Stderr, "[cc-usage] %s.\n계속하려면 터미널에서: cc-usage allow 30m\n", d.Reason)
 	os.Exit(2)
 	return nil
 }
 
 func runAllow(args []string) error {
-	p, pos, err := profileFlags("allow", args)
+	_, pos, err := loadConfig("allow", args)
 	if err != nil {
 		return err
 	}
@@ -287,20 +272,20 @@ func runAllow(args []string) error {
 	var a store.AllowFile
 	if arg == "off" || arg == "0" {
 		a.AllowUntil = time.Time{}
-		fmt.Printf("[%s] guard 다시 활성화\n", p.Display())
+		fmt.Println("[cc-usage] guard 다시 활성화")
 	} else {
 		d, err := time.ParseDuration(arg)
 		if err != nil || d <= 0 {
 			return fmt.Errorf("invalid duration %q (예: 30m, 2h)", arg)
 		}
 		a.AllowUntil = time.Now().Add(d)
-		fmt.Printf("[%s] %s까지 크레딧 사용 허용\n", p.Display(), a.AllowUntil.Format("15:04"))
+		fmt.Printf("[cc-usage] %s까지 크레딧 사용 허용\n", a.AllowUntil.Format("15:04"))
 	}
-	return store.Write(store.AllowPath(p), &a)
+	return store.Write(store.AllowPath(), &a)
 }
 
 func runProbe(args []string) error {
-	p, _, err := profileFlags("probe", args)
+	p, _, err := loadConfig("probe", args)
 	if err != nil {
 		return err
 	}
@@ -324,27 +309,19 @@ func runProbe(args []string) error {
 }
 
 func runDoctor(args []string) error {
-	p, _, err := profileFlags("doctor", args)
+	p, _, err := loadConfig("doctor", args)
 	if err != nil {
 		return err
-	}
-	if cfg, err := config.Load(); err == nil {
-		for _, o := range cfg.Profiles {
-			if o.Name != p.Name && o.ConfigDir != p.ConfigDir && o.TokenEnv == "" && p.TokenEnv == "" &&
-				o.KeychainService == p.KeychainService {
-				fmt.Printf("⚠︎ profile %q와 keychain_service가 같습니다 (%s). 계정이 섞일 수 있으니 아래 목록에서 맞는 항목을 지정하세요.\n", o.Name, p.KeychainService)
-			}
-		}
 	}
 	if svcs, err := auth.KeychainServices(context.Background()); err == nil {
 		fmt.Printf("keychain 후보:  %s\n", strings.Join(svcs, ", "))
 	}
 	fmt.Printf("config:        %s\n", config.Path())
-	fmt.Printf("profile:       %s (label=%s, source=%s)\n", p.Name, p.StatusLabel(), p.Source)
+	fmt.Printf("source:        %s\n", p.Source)
 	fmt.Printf("config_dir:    %s\n", p.ConfigDir)
 	fmt.Printf("keychain:      %s\n", p.KeychainService)
 	fmt.Printf("creds file:    %s\n", p.CredentialsFile)
-	fmt.Printf("cache dir:     %s\n", store.Dir(p))
+	fmt.Printf("cache dir:     %s\n", store.Dir())
 	fmt.Printf("guard:         %v\n", p.Guard)
 	fmt.Printf("alert:         임박 %.0f%% (0이면 소진만)\n", p.AlertPercent)
 	fmt.Printf("notify:        %v\n", p.NotifyState())
@@ -365,8 +342,8 @@ func runDoctor(args []string) error {
 
 	var st store.StateFile
 	var uf store.UsageFile
-	_ = store.Read(store.StatePath(p), &st)
-	_ = store.Read(store.UsagePath(p), &uf)
+	_ = store.Read(store.StatePath(), &st)
+	_ = store.Read(store.UsagePath(), &uf)
 	b, _ := json.MarshalIndent(struct {
 		State store.StateFile `json:"state"`
 		Usage store.UsageFile `json:"usage"`

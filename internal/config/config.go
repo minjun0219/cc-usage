@@ -1,4 +1,4 @@
-// Package config loads cc-usage profiles (one per Claude account).
+// Package config loads the cc-usage settings file.
 package config
 
 import (
@@ -18,9 +18,10 @@ const (
 	SourceAPI   = "api"   // Team/Enterprise: poll the OAuth usage API
 )
 
-type Profile struct {
-	Name              string  `json:"-"`
-	Label             *string `json:"label"`
+// Config is the whole settings file — 계정 하나를 상정한다. 한 머신에서 여러
+// 계정을 보려면 설정을 나누는 게 아니라 프로세스를 나눈다: CC_USAGE_CONFIG 와
+// XDG_CACHE_HOME 을 다른 곳으로 주면 설정도 cache 도 통째로 갈린다.
+type Config struct {
 	ConfigDir         string  `json:"config_dir"`
 	Source            string  `json:"source"`
 	KeychainService   string  `json:"keychain_service"`
@@ -64,17 +65,17 @@ func (n *Notify) On() bool {
 
 // NotifyState explains why notifications will or will not fire. 인자는 숨긴다 —
 // webhook URL이나 토큰을 넣는 게 흔한데 doctor 출력은 로그에 남는다.
-func (p *Profile) NotifyState() string {
+func (c *Config) NotifyState() string {
 	switch {
-	case p.Notify == nil:
+	case c.Notify == nil:
 		return "설정 없음"
-	case len(p.Notify.Command) == 0:
+	case len(c.Notify.Command) == 0:
 		return "command 없음"
-	case !p.Notify.On():
+	case !c.Notify.On():
 		return "enabled=false (명령은 보존됨)"
 	}
 	return fmt.Sprintf("on — %s (인자 %d개, 내용은 숨김)",
-		p.Notify.Command[0], len(p.Notify.Command)-1)
+		c.Notify.Command[0], len(c.Notify.Command)-1)
 }
 
 // ExtraCommand is one external statusline segment. Command is an argv list (no
@@ -93,31 +94,8 @@ func (e ExtraCommand) Timeout() time.Duration {
 	return time.Duration(e.TimeoutMS) * time.Millisecond
 }
 
-type Config struct {
-	DefaultProfile string              `json:"default_profile"`
-	Profiles       map[string]*Profile `json:"profiles"`
-}
-
-// StatusLabel is the "[…]" segment on the statusline. 설정에 없으면 profile 이름,
-// 빈 문자열로 지정하면 세그먼트 자체를 내지 않는다 — profile이 하나뿐인 설치에서
-// 매 줄 앞에 붙는 라벨은 구분이 아니라 노이즈다.
-func (p *Profile) StatusLabel() string {
-	if p.Label == nil {
-		return p.Name
-	}
-	return *p.Label
-}
-
-// Display is the profile name used in messages; 라벨을 껐어도 비지 않는다.
-func (p *Profile) Display() string {
-	if l := p.StatusLabel(); l != "" {
-		return l
-	}
-	return p.Name
-}
-
-func (p *Profile) Poll() time.Duration       { return time.Duration(p.PollSeconds) * time.Second }
-func (p *Profile) CreditPoll() time.Duration { return time.Duration(p.CreditPollSeconds) * time.Second }
+func (c *Config) Poll() time.Duration       { return time.Duration(c.PollSeconds) * time.Second }
+func (c *Config) CreditPoll() time.Duration { return time.Duration(c.CreditPollSeconds) * time.Second }
 
 // Path returns the config file path ($CC_USAGE_CONFIG or ~/.config/cc-usage/config.json).
 func Path() string {
@@ -130,7 +108,8 @@ func Path() string {
 	return Expand("~/.config/cc-usage/config.json")
 }
 
-// Load reads the config. A missing file yields a single "default" profile.
+// Load reads the config. 파일이 없으면 기본값만으로 동작한다 — statusline은
+// 설정이 없다고 비면 안 된다.
 func Load() (*Config, error) {
 	cfg := &Config{}
 	b, err := os.ReadFile(Path())
@@ -143,86 +122,43 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("config %s: %w", Path(), err)
 		}
 	}
-	if len(cfg.Profiles) == 0 {
-		cfg.Profiles = map[string]*Profile{"default": {}}
-		cfg.DefaultProfile = "default"
-	}
-	for name, p := range cfg.Profiles {
-		if p == nil {
-			p = &Profile{}
-			cfg.Profiles[name] = p
-		}
-		p.Name = name
-		p.ApplyDefaults()
-	}
+	cfg.ApplyDefaults()
 	return cfg, nil
 }
 
-func (p *Profile) ApplyDefaults() {
-	if p.ConfigDir == "" {
-		p.ConfigDir = "~/.claude"
+func (c *Config) ApplyDefaults() {
+	if c.ConfigDir == "" {
+		c.ConfigDir = "~/.claude"
 	}
-	p.ConfigDir = Expand(p.ConfigDir)
-	if p.Source == "" {
-		p.Source = SourceAuto
+	c.ConfigDir = Expand(c.ConfigDir)
+	if c.Source == "" {
+		c.Source = SourceAuto
 	}
-	if p.KeychainService == "" {
-		p.KeychainService = "Claude Code-credentials"
+	if c.KeychainService == "" {
+		c.KeychainService = "Claude Code-credentials"
 	}
-	if p.CredentialsFile == "" {
-		p.CredentialsFile = filepath.Join(p.ConfigDir, ".credentials.json")
+	if c.CredentialsFile == "" {
+		c.CredentialsFile = filepath.Join(c.ConfigDir, ".credentials.json")
 	}
-	p.CredentialsFile = Expand(p.CredentialsFile)
-	if p.PollSeconds <= 0 {
-		p.PollSeconds = 300
+	c.CredentialsFile = Expand(c.CredentialsFile)
+	if c.PollSeconds <= 0 {
+		c.PollSeconds = 300
 	}
-	if p.CreditPollSeconds <= 0 {
-		p.CreditPollSeconds = 300
+	if c.CreditPollSeconds <= 0 {
+		c.CreditPollSeconds = 300
 	}
-	if p.AlertPercent == 0 {
-		p.AlertPercent = 90
+	if c.AlertPercent == 0 {
+		c.AlertPercent = 90
 	}
-	if p.AlertPercent < 0 || p.AlertPercent > 100 {
-		p.AlertPercent = 0 // 범위를 벗어나면 임박 경고를 끈다 (소진 강조는 남는다)
+	if c.AlertPercent < 0 || c.AlertPercent > 100 {
+		c.AlertPercent = 0 // 범위를 벗어나면 임박 경고를 끈다 (소진 강조는 남는다)
 	}
-	if p.CreditDivisor <= 0 {
-		p.CreditDivisor = 100
+	if c.CreditDivisor <= 0 {
+		c.CreditDivisor = 100
 	}
-	if p.Currency == "" {
-		p.Currency = "$"
+	if c.Currency == "" {
+		c.Currency = "$"
 	}
-}
-
-// Resolve picks a profile: explicit > $CC_USAGE_PROFILE > $CLAUDE_CONFIG_DIR match > default.
-func (c *Config) Resolve(explicit string) (*Profile, error) {
-	for _, name := range []string{explicit, os.Getenv("CC_USAGE_PROFILE")} {
-		if name == "" {
-			continue
-		}
-		if p, ok := c.Profiles[name]; ok {
-			return p, nil
-		}
-		return nil, fmt.Errorf("unknown profile %q", name)
-	}
-	dir := os.Getenv("CLAUDE_CONFIG_DIR")
-	if dir == "" {
-		dir = "~/.claude"
-	}
-	dir = filepath.Clean(Expand(dir))
-	for _, p := range c.Profiles {
-		if filepath.Clean(p.ConfigDir) == dir {
-			return p, nil
-		}
-	}
-	if p, ok := c.Profiles[c.DefaultProfile]; ok {
-		return p, nil
-	}
-	if len(c.Profiles) == 1 {
-		for _, p := range c.Profiles {
-			return p, nil
-		}
-	}
-	return nil, errors.New("no profile matched; pass --profile")
 }
 
 // Expand replaces a leading ~ with the home directory.

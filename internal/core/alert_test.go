@@ -8,9 +8,9 @@ import (
 	"cc-usage/internal/store"
 )
 
-func alertProfile(t *testing.T) *config.Profile {
+func alertProfile(t *testing.T) *config.Config {
 	t.Helper()
-	p := &config.Profile{Name: "p"}
+	p := &config.Config{}
 	p.ApplyDefaults() // alert_percent 기본 90
 	return p
 }
@@ -110,7 +110,7 @@ func TestAlertsSameLevelPrefersSevenDay(t *testing.T) {
 }
 
 func TestAlertsNearDisabled(t *testing.T) {
-	p := &config.Profile{Name: "p", AlertPercent: -1} // 범위 밖 → 임박 경고 끔
+	p := &config.Config{AlertPercent: -1} // 범위 밖 → 임박 경고 끔
 	p.ApplyDefaults()
 	lim := Limits{FiveHour: &store.Window{Percent: 99}}
 	if a, _ := Alerts(p, lim, &store.StateFile{}, time.Now()); a.Level != AlertNone {

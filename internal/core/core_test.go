@@ -11,8 +11,8 @@ import (
 
 func f(v float64) *float64 { return &v }
 
-func profile(src string) *config.Profile {
-	p := &config.Profile{Name: "t", Source: src, Guard: true}
+func profile(src string) *config.Config {
+	p := &config.Config{Source: src, Guard: true}
 	p.ApplyDefaults()
 	return p
 }
