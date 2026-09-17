@@ -220,24 +220,33 @@ func AbbrevHome(p string) string {
 // 남은 양이 지금 무엇을 할 수 있는지에 바로 답한다. 색은 그대로 사용률로 고르므로
 // (pctColor·alertStyle) 숫자가 작아질수록 빨개진다 — 숫자와 색이 같은 방향이다.
 func windowText(name string, w *store.Window, v View, s Style) string {
-	t := name + " " + s.c(s.alertStyle(name, w, v.Alert), fmt.Sprintf("%.0f%%", 100-w.Percent))
+	pct, style := s.alertPct(name, w, v.Alert)
+	t := name + " " + s.c(style, pct)
 	if !w.ResetsAt.IsZero() && w.ResetsAt.After(v.Now) {
 		t += " " + s.c(dim, "("+resetText(w.ResetsAt, v.Now)+")")
 	}
 	return t
 }
 
-// alertStyle emphasises the window that raised the alert: 단계가 올라간 직후
-// 몇 초만 배지로 깜빡이고(눈을 끌고), 그 뒤에는 굵은 빨강으로 가만히 남는다.
-// 계속 움직이는 표시는 결국 배경이 된다.
-func (s Style) alertStyle(name string, w *store.Window, a core.Alert) string {
+// alertPct renders the percentage for one window, as a 배지 when this window
+// raised the alert.
+//
+// 굵은 빨강 "글씨" 로는 묻힌다 — 같은 줄의 ctx 와 다른 창도 임계색을 쓰고 있어서,
+// 경보가 "조금 더 빨간 글씨" 가 된다. 배지는 줄에서 유일한 색면(色面)이라 바로
+// 눈에 걸린다. 양옆 한 칸은 배지가 이웃 글자에 붙어 답답해 보이는 것을 막는다.
+//
+// 여백은 burst 의 꺼진 프레임에도 남긴다 — 프레임마다 폭이 바뀌면 줄 전체가
+// 좌우로 출렁인다. 깜빡이는 것은 색이지 자리가 아니다.
+func (s Style) alertPct(name string, w *store.Window, a core.Alert) (string, string) {
+	pct := fmt.Sprintf("%.0f%%", 100-w.Percent)
 	if a.Level == core.AlertNone || a.Window != name {
-		return s.pctColor(w.Percent)
+		return pct, s.pctColor(w.Percent)
 	}
-	if a.Burst && a.On {
-		return redBG
+	pct = " " + pct + " "
+	if a.Burst && !a.On {
+		return pct, bold + red // 깜빡임의 꺼진 프레임
 	}
-	return bold + red
+	return pct, redBG
 }
 
 // resetText answers "언제 풀리나". 오늘 안이면 시각 하나로 끝난다 — `↻14:40` 은

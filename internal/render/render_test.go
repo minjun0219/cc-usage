@@ -298,15 +298,22 @@ func TestWindowAlertEmphasis(t *testing.T) {
 		return Lines(View{Config: p, Limits: lim, Alert: a, Usage: uf,
 			Credits: core.Credits(p, lim, uf, now), Now: now}, Style{Color: true})[0]
 	}
-	// burst의 켜진 프레임만 배지, 꺼진 프레임과 burst 종료 후에는 굵은 빨강.
+	// 경보가 붙은 창은 배지다 — burst 가 끝나도 배지로 남는다. 굵은 빨강 글씨는
+	// 같은 줄의 다른 임계색에 묻힌다.
 	on := line(core.Alert{Level: core.AlertNear, Window: "5h", Burst: true, On: true})
 	off := line(core.Alert{Level: core.AlertNear, Window: "5h", Burst: true})
 	rest := line(core.Alert{Level: core.AlertNear, Window: "5h"})
-	if !strings.Contains(on, redBG+"5%") {
-		t.Errorf("켜진 프레임은 배지여야 한다: %q", on)
+	if !strings.Contains(on, redBG+" 5% ") || !strings.Contains(rest, redBG+" 5% ") {
+		t.Errorf("켜진 프레임과 쉼 상태는 배지: on=%q rest=%q", on, rest)
 	}
-	if !strings.Contains(off, bold+red+"5%") || !strings.Contains(rest, bold+red+"5%") {
-		t.Errorf("꺼진 프레임·burst 종료 후는 굵은 빨강: off=%q rest=%q", off, rest)
+	// 깜빡임의 꺼진 프레임만 글씨로 떨어진다. 여백은 그대로 남겨 폭이 바뀌지
+	// 않게 한다 — 프레임마다 폭이 달라지면 줄 전체가 좌우로 출렁인다.
+	if !strings.Contains(off, bold+red+" 5% ") {
+		t.Errorf("꺼진 프레임은 여백을 유지한 글씨: %q", off)
+	}
+	if displayWidth(on) != displayWidth(off) || displayWidth(on) != displayWidth(rest) {
+		t.Errorf("프레임마다 폭이 달라지면 안 된다: on=%d off=%d rest=%d",
+			displayWidth(on), displayWidth(off), displayWidth(rest))
 	}
 	// 경보를 올리지 않은 window는 평소 색 그대로다.
 	if !strings.Contains(on, yellow+"25%") {
