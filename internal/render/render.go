@@ -240,16 +240,14 @@ func (s Style) alertStyle(name string, w *store.Window, a core.Alert) string {
 	return bold + red
 }
 
-// resetText is the time left until the window resets, plus the local wall clock
-// of the reset itself — "언제 풀리나"는 남은 시간보다 시각이 쓸모 있다. 하루를
-// 넘기면 시각만으로는 어느 날인지 모르니 남은 시간만 남긴다.
+// resetText answers "언제 풀리나". 하루 안이면 시각 하나로 끝난다 — `↻14:40` 은
+// 8칸 고정이라 남은 시간이 줄어도 뒤가 밀리지 않고, ↻ 가 "여기서 다시 시작한다"를
+// 바로 전한다. 하루를 넘기면 시각만으로는 어느 날인지 모르므로 남은 시간을 낸다.
 func resetText(at, now time.Time) string {
-	d := at.Sub(now)
-	t := Duration(d)
-	if d < 24*time.Hour {
-		t += "→" + at.Local().Format("15:04")
+	if d := at.Sub(now); d >= 24*time.Hour {
+		return Duration(d)
 	}
-	return t
+	return "↻" + at.Local().Format("15:04")
 }
 
 func statusNote(v View, s Style) string {

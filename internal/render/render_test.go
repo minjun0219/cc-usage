@@ -49,7 +49,7 @@ func TestLinesSpending(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("lines: %q", lines)
 	}
-	if !strings.Contains(lines[0], "5h 0% (1h 20m→") || !strings.Contains(lines[0], "ctx 42%") {
+	if !strings.Contains(lines[0], "5h 0% (↻") || !strings.Contains(lines[0], "ctx 42%") {
 		t.Errorf("line1: %s", lines[0])
 	}
 	// 금액은 **남은 값**이다 — 쓴 값 $10.80 이 아니라 $50.00-$10.80.
@@ -128,7 +128,7 @@ func TestDirLine(t *testing.T) {
 
 func TestResetText(t *testing.T) {
 	now := time.Date(2026, 9, 16, 16, 40, 0, 0, time.Local)
-	if got := resetText(now.Add(80*time.Minute), now); got != "1h 20m→18:00" {
+	if got := resetText(now.Add(80*time.Minute), now); got != "↻18:00" {
 		t.Errorf("within a day: %s", got)
 	}
 	// 하루를 넘기면 시각만으로 어느 날인지 알 수 없으니 남은 시간만 남긴다.
