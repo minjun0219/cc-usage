@@ -243,13 +243,18 @@ func TestCreditFallsBelowWhenTooWide(t *testing.T) {
 	if len(unknown) != 1 {
 		t.Errorf("폭을 모르면 기존대로 붙인다: %q", unknown)
 	}
-	// 경계: 딱 맞으면 붙이고 한 칸 모자라면 내린다.
-	exact := displayWidth(Lines(view, Style{Width: 200})[0])
-	if got := Lines(view, Style{Width: exact}); len(got) != 1 {
-		t.Errorf("폭이 정확히 맞으면 붙인다(%d칸): %q", exact, got)
+	// 경계 — 판단 기준은 COLUMNS 가 아니라 COLUMNS-rightMargin 이다. 오른쪽은
+	// Claude Code 의 배지·알림 몫이라 우리가 쓰면 그것들이 아래로 밀린다.
+	row := displayWidth(Lines(view, Style{Width: 500})[0])
+	if got := Lines(view, Style{Width: row + rightMargin}); len(got) != 1 {
+		t.Errorf("여백까지 확보되면 붙인다(%d칸): %q", row+rightMargin, got)
 	}
-	if got := Lines(view, Style{Width: exact - 1}); len(got) != 2 {
-		t.Errorf("한 칸 모자라면 내린다(%d칸): %q", exact-1, got)
+	if got := Lines(view, Style{Width: row + rightMargin - 1}); len(got) != 2 {
+		t.Errorf("여백이 한 칸 모자라면 내린다(%d칸): %q", row+rightMargin-1, got)
+	}
+	// 줄 자체는 들어가지만 여백이 없는 폭 — 여기서 붙이면 배지가 밀린다.
+	if got := Lines(view, Style{Width: row + 1}); len(got) != 2 {
+		t.Errorf("줄은 들어가도 여백이 없으면 내린다(%d칸): %q", row+1, got)
 	}
 }
 

@@ -26,6 +26,14 @@ type Style struct {
 	Width int
 }
 
+// rightMargin 은 statusline 이 쓰지 않고 비워 두는 오른쪽 칸이다.
+//
+// COLUMNS 는 터미널 폭이지 statusline 이 다 써도 되는 폭이 아니다 — Claude Code 가
+// 그 오른쪽에 배지·알림을 얹는다("✔ Update installed · Restart to update" 가 실측
+// 38칸이었다). 우리 줄이 길면 그것들이 아래로 밀린다. 실측 38 + 여유로 40 을 둔다.
+// 정확한 값을 알 길은 없다 — 배지 문구는 그때그때 다르다.
+const rightMargin = 40
+
 func DefaultStyle() Style {
 	ct := os.Getenv("COLORTERM")
 	w, _ := strconv.Atoi(os.Getenv("COLUMNS")) // 없거나 이상하면 0 — 폭 판단을 건너뛴다
@@ -276,7 +284,7 @@ func (s Style) creditStandalone(v View, row, credit, sep string) bool {
 	if row != "" {
 		w += displayWidth(sep)
 	}
-	return w > s.Width
+	return w > s.Width-rightMargin
 }
 
 func creditLine(v View, s Style) string {
