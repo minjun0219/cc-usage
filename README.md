@@ -170,7 +170,7 @@ cc-usage doctor
 cc-usage version
 ```
 
-`NO_COLOR=1`이면 색상을 끕니다. cache는 `~/.cache/cc-usage/` (0600).
+`NO_COLOR=1`이면 색상을 끕니다. 퍼센트 색은 `COLORTERM`이 `truecolor`/`24bit`면 24bit 그라데이션으로 끊김 없이 변하고, 아니면 3단계(green/yellow/red)로 떨어집니다 — 지원하지 않는 터미널에서 이스케이프가 글자로 새는 것보다 계단식 색이 낫습니다. 경보(배지·굵은 빨강)는 임계를 넘어선 상태라 고정색입니다. cache는 `~/.cache/cc-usage/` (0600).
 
 ## 확장 아이디어
 

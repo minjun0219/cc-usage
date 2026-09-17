@@ -14,10 +14,20 @@ import (
 	"cc-usage/internal/store"
 )
 
-type Style struct{ Color bool }
+type Style struct {
+	Color bool
+	// TrueColor turns the 퍼센트 색을 24bit 그라데이션으로 바꾼다. 끄면 기존 3단계
+	// ANSI 색으로 떨어진다 — 지원하지 않는 터미널에서 이스케이프가 글자로 새는
+	// 것보다 계단식 색이 낫다.
+	TrueColor bool
+}
 
 func DefaultStyle() Style {
-	return Style{Color: os.Getenv("NO_COLOR") == ""}
+	ct := os.Getenv("COLORTERM")
+	return Style{
+		Color:     os.Getenv("NO_COLOR") == "",
+		TrueColor: ct == "truecolor" || ct == "24bit",
+	}
 }
 
 const (
@@ -63,7 +73,7 @@ func Lines(v View, s Style) []string {
 		parts = append(parts, s.c(magenta, v.Model))
 	}
 	if v.ContextPct != nil {
-		parts = append(parts, "ctx "+s.c(pctColor(*v.ContextPct), fmt.Sprintf("%.0f%%", *v.ContextPct)))
+		parts = append(parts, "ctx "+s.c(s.pctColor(*v.ContextPct), fmt.Sprintf("%.0f%%", *v.ContextPct)))
 	}
 	if w := v.Limits.FiveHour; w != nil {
 		parts = append(parts, windowText("5h", w, v, s))
@@ -171,7 +181,7 @@ func AbbrevHome(p string) string {
 // 남은 양이 지금 무엇을 할 수 있는지에 바로 답한다. 색은 그대로 사용률로 고르므로
 // (pctColor·alertStyle) 숫자가 작아질수록 빨개진다 — 숫자와 색이 같은 방향이다.
 func windowText(name string, w *store.Window, v View, s Style) string {
-	t := name + " " + s.c(alertStyle(name, w, v.Alert), fmt.Sprintf("%.0f%%", 100-w.Percent))
+	t := name + " " + s.c(s.alertStyle(name, w, v.Alert), fmt.Sprintf("%.0f%%", 100-w.Percent))
 	if !w.ResetsAt.IsZero() && w.ResetsAt.After(v.Now) {
 		t += " " + s.c(dim, "("+resetText(w.ResetsAt, v.Now)+")")
 	}
@@ -181,9 +191,9 @@ func windowText(name string, w *store.Window, v View, s Style) string {
 // alertStyle emphasises the window that raised the alert: 단계가 올라간 직후
 // 몇 초만 배지로 깜빡이고(눈을 끌고), 그 뒤에는 굵은 빨강으로 가만히 남는다.
 // 계속 움직이는 표시는 결국 배경이 된다.
-func alertStyle(name string, w *store.Window, a core.Alert) string {
+func (s Style) alertStyle(name string, w *store.Window, a core.Alert) string {
 	if a.Level == core.AlertNone || a.Window != name {
-		return pctColor(w.Percent)
+		return s.pctColor(w.Percent)
 	}
 	if a.Burst && a.On {
 		return redBG
@@ -249,7 +259,12 @@ func creditLine(v View, s Style) string {
 	return s.c(dim, t)
 }
 
-func pctColor(p float64) string {
+// pctColor maps 사용률 to a colour. 트루컬러면 끊김 없이 변하고, 아니면 3단계다.
+// 경보(배지·굵은 빨강)는 여기 오지 않는다 — 임계를 넘어선 상태라 고정색이 맞다.
+func (s Style) pctColor(p float64) string {
+	if s.TrueColor {
+		return gradient(p)
+	}
 	switch {
 	case p >= 90:
 		return red
@@ -258,6 +273,16 @@ func pctColor(p float64) string {
 	default:
 		return green
 	}
+}
+
+// gradient goes green(여유) → 올리브 → red(소진) as 사용률 rises. 지수는 눈이
+// 밝기를 선형으로 읽지 않아서 넣은 것이다 — 선형으로 섞으면 중간이 탁해진다.
+func gradient(used float64) string {
+	t := (100 - math.Max(0, math.Min(100, used))) / 100 // 남은 비율
+	r := int(230 * math.Pow(1-t, 0.7))
+	g := int(200 * math.Pow(t, 0.6))
+	b := int(30 * t)
+	return fmt.Sprintf("\033[38;2;%d;%d;%dm", r, g, b)
 }
 
 func money(cur string, v float64) string {

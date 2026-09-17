@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -132,6 +133,35 @@ func TestResetText(t *testing.T) {
 	// 하루를 넘기면 시각만으로 어느 날인지 알 수 없으니 남은 시간만 남긴다.
 	if got := resetText(now.Add(52*time.Hour), now); got != "2d 4h" {
 		t.Errorf("beyond a day: %s", got)
+	}
+}
+
+// 트루컬러면 퍼센트 색이 끊김 없이 변하고, 아니면 기존 3단계로 떨어진다.
+func TestPctColorGradientAndFallback(t *testing.T) {
+	tc := Style{Color: true, TrueColor: true}
+	var prevR int
+	for i, used := range []float64{0, 30, 60, 90, 100} {
+		got := tc.pctColor(used)
+		if !strings.HasPrefix(got, "\033[38;2;") {
+			t.Fatalf("트루컬러는 24bit 이스케이프여야 한다: %q", got)
+		}
+		var r, g, b int
+		if _, err := fmt.Sscanf(got, "\033[38;2;%d;%d;%dm", &r, &g, &b); err != nil {
+			t.Fatalf("파싱 실패 %q: %v", got, err)
+		}
+		// 사용률이 오를수록 빨강이 세진다 — 숫자와 색이 같은 방향.
+		if i > 0 && r <= prevR {
+			t.Errorf("used=%v 에서 빨강이 더 세지지 않았다: %d → %d", used, prevR, r)
+		}
+		prevR = r
+	}
+
+	// 지원하지 않는 터미널에서는 이스케이프가 새면 안 되고 3단계로 떨어진다.
+	plain := Style{Color: true}
+	for used, want := range map[float64]string{10: green, 75: yellow, 95: red} {
+		if got := plain.pctColor(used); got != want {
+			t.Errorf("폴백 used=%v: got %q want %q", used, got, want)
+		}
 	}
 }
 
