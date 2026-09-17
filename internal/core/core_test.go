@@ -287,3 +287,22 @@ func TestBackoff(t *testing.T) {
 type errTest struct{}
 
 func (errTest) Error() string { return "x" }
+
+func TestPollIntervalNeverOutlastsStale(t *testing.T) {
+	lim := Limits{FiveHour: &store.Window{Percent: 30}} // 여유 구간 — idle 배수가 붙는다
+	for _, c := range []struct {
+		secs int
+		want time.Duration
+	}{
+		{300, 15 * time.Minute},  // 300×3 = 15m, StaleAfter 안쪽
+		{600, 30 * time.Minute},  // 600×3 = 30m 로 늘리면 임계와 같아진다 → 캡
+		{900, 30 * time.Minute},  // 45m 가 될 것을 StaleAfter 로 자른다
+		{2400, 40 * time.Minute}, // Poll 자체가 임계를 넘으면 그건 사용자 선택이다
+	} {
+		cfg := &config.Config{PollSeconds: c.secs}
+		cfg.ApplyDefaults()
+		if got := pollInterval(cfg, lim); got != c.want {
+			t.Errorf("poll_seconds=%d: got %v want %v", c.secs, got, c.want)
+		}
+	}
+}

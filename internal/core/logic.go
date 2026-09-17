@@ -119,7 +119,14 @@ func pollInterval(p *config.Config, lim Limits) time.Duration {
 	case peak >= idleBelow:
 		return p.Poll()
 	default:
-		return p.Poll() * idlePollFactor
+		iv := p.Poll() * idlePollFactor
+		// 우리가 늘린 간격이 StaleAfter 를 넘으면 여유 구간 내내 "⚠︎ stale" 이
+		// 뜬다 — 화면은 데이터가 낡았다고 말하는데 폴링은 쉬고 있는 상태다.
+		// 사용자가 직접 정한 Poll() 이 이미 그보다 길면 그건 그쪽 선택이다.
+		if limit := max(p.Poll(), StaleAfter); iv > limit {
+			iv = limit
+		}
+		return iv
 	}
 }
 
