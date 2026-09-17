@@ -17,10 +17,12 @@ import (
 
 type Style struct {
 	Color bool
-	// TrueColor turns the 퍼센트 색을 24bit 그라데이션으로 바꾼다. 끄면 기존 3단계
-	// ANSI 색으로 떨어진다 — 지원하지 않는 터미널에서 이스케이프가 글자로 새는
-	// 것보다 계단식 색이 낫다.
+	// TrueColor turns the 퍼센트 색을 24bit 그라데이션으로 바꾼다.
 	TrueColor bool
+	// Color256 is the middle tier. statusline 프로세스에는 COLORTERM 이 오지
+	// 않고 TERM 만 온다(실측) — 24bit 를 못 쓴다고 바로 3단계로 떨어뜨리면
+	// 71% 와 89% 가 같은 색이 된다. 256색이면 그 사이가 보인다.
+	Color256 bool
 	// Width is the terminal column count, 0이면 모름. statusline 은 stdout 이
 	// 파이프라 tput·ioctl 로는 폭을 알 수 없고, Claude Code 가 COLUMNS 로 넣어 준다.
 	Width int
@@ -56,6 +58,7 @@ func DefaultStyle() Style {
 	return Style{
 		Color:     os.Getenv("NO_COLOR") == "",
 		TrueColor: ct == "truecolor" || ct == "24bit",
+		Color256:  strings.Contains(os.Getenv("TERM"), "256color"),
 		Width:     w,
 	}
 }
@@ -77,6 +80,40 @@ const (
 	redBG   = "\033[41;97m"
 	bold    = "\033[1m"
 )
+
+// rgb renders a color in the best form the terminal supports. ok 가 false 면
+// 호출자가 기본 ANSI 단계로 떨어진다 — 지원하지 않는 터미널에서 이스케이프가
+// 글자로 새어 나오는 것보다 계단식 색이 낫다.
+func (s Style) rgb(r, g, b int) (string, bool) {
+	switch {
+	case s.TrueColor:
+		return fmt.Sprintf("\033[38;2;%d;%d;%dm", r, g, b), true
+	case s.Color256:
+		return fmt.Sprintf("\033[38;5;%dm", cube256(r, g, b)), true
+	}
+	return "", false
+}
+
+// cube256 maps RGB onto the 6×6×6 color cube (16-231). 큐브의 각 축은 등간격이
+// 아니라 0·95·135·175·215·255 이므로 가장 가까운 단계를 고른다.
+func cube256(r, g, b int) int {
+	return 16 + 36*cubeAxis(r) + 6*cubeAxis(g) + cubeAxis(b)
+}
+
+func cubeAxis(v int) int {
+	levels := [6]int{0, 95, 135, 175, 215, 255}
+	best, bestD := 0, 1<<30
+	for i, l := range levels {
+		d := v - l
+		if d < 0 {
+			d = -d
+		}
+		if d < bestD {
+			best, bestD = i, d
+		}
+	}
+	return best
+}
 
 func (s Style) c(code, text string) string {
 	if !s.Color || text == "" {
@@ -367,8 +404,8 @@ func creditLine(v View, s Style) string {
 }
 
 func (s Style) pctColor(p float64) string {
-	if s.TrueColor {
-		return gradient(p)
+	if c, ok := s.rgb(gradientRGB(p)); ok {
+		return c
 	}
 	switch {
 	case p >= 90:
@@ -392,10 +429,9 @@ func (s Style) pctColor(p float64) string {
 // 80% 를 넘어서부터 확 밝아지게 한다 — 41% 는 0.14, 80% 는 0.60, 95% 는 0.89.
 func (s Style) ctxColor(p float64) string {
 	p = math.Max(0, math.Min(100, p))
-	if s.TrueColor {
-		t := math.Pow(p/100, ctxCurve)
-		return fmt.Sprintf("\033[38;2;%d;%d;%dm",
-			int(75+45*t), int(95+95*t), int(130+125*t))
+	t := math.Pow(p/100, ctxCurve)
+	if c, ok := s.rgb(int(75+45*t), int(95+95*t), int(130+125*t)); ok {
+		return c
 	}
 	// truecolor 가 없을 때의 계단. 경계도 같은 이유로 뒤에 둔다.
 	switch {
@@ -408,14 +444,11 @@ func (s Style) ctxColor(p float64) string {
 	}
 }
 
-// gradient goes green(여유) → 올리브 → red(소진) as 사용률 rises. 지수는 눈이
+// gradientRGB goes green(여유) → 올리브 → red(소진) as 사용률 rises. 지수는 눈이
 // 밝기를 선형으로 읽지 않아서 넣은 것이다 — 선형으로 섞으면 중간이 탁해진다.
-func gradient(used float64) string {
+func gradientRGB(used float64) (int, int, int) {
 	t := (100 - math.Max(0, math.Min(100, used))) / 100 // 남은 비율
-	r := int(230 * math.Pow(1-t, 0.7))
-	g := int(200 * math.Pow(t, 0.6))
-	b := int(30 * t)
-	return fmt.Sprintf("\033[38;2;%d;%d;%dm", r, g, b)
+	return int(230 * math.Pow(1-t, 0.7)), int(200 * math.Pow(t, 0.6)), int(30 * t)
 }
 
 func money(cur string, v float64) string {

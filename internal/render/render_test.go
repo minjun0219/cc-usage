@@ -416,3 +416,54 @@ func TestCtxColorStaysOutOfTheRedAxis(t *testing.T) {
 		prev = [3]int{r, g, b}
 	}
 }
+
+func TestColorTiers(t *testing.T) {
+	// statusline 프로세스에는 COLORTERM 이 오지 않고 TERM 만 온다(실측).
+	// 24bit 가 없다고 바로 3단계로 떨어지면 71% 와 89% 가 같은 색이 된다.
+	tiers := []struct {
+		name   string
+		style  Style
+		prefix string
+	}{
+		{"24bit", Style{Color: true, TrueColor: true}, "\033[38;2;"},
+		{"256색", Style{Color: true, Color256: true}, "\033[38;5;"},
+	}
+	for _, tier := range tiers {
+		seen := map[string]bool{}
+		for _, p := range []float64{10, 30, 50, 71, 80, 89, 95} {
+			c := tier.style.pctColor(p)
+			if !strings.HasPrefix(c, tier.prefix) {
+				t.Errorf("%s: %v%% → %q", tier.name, p, c)
+			}
+			seen[c] = true
+		}
+		// 71 과 89 가 갈리는지가 이 계층을 둔 이유다.
+		if a, b := tier.style.pctColor(71), tier.style.pctColor(89); a == b {
+			t.Errorf("%s: 71%%와 89%%가 같은 색이다 (%q)", tier.name, a)
+		}
+		if len(seen) < 5 {
+			t.Errorf("%s: 7개 값에서 색이 %d가지뿐 — 그라데이션이 뭉갠다", tier.name, len(seen))
+		}
+	}
+	// 둘 다 없으면 기존 3단계로 떨어진다.
+	plain := Style{Color: true}
+	if got := plain.pctColor(50); got != green {
+		t.Errorf("폴백: %q", got)
+	}
+}
+
+func TestCube256Axis(t *testing.T) {
+	// 큐브 축은 등간격이 아니다 (0·95·135·175·215·255). 가장 가까운 단계를 고른다.
+	// 정확히 중간인 값(115 = 95와 135의 중간)은 어느 쪽이든 임의라 넣지 않는다.
+	for in, want := range map[int]int{0: 0, 40: 0, 60: 1, 95: 1, 120: 2, 175: 3, 255: 5} {
+		if got := cubeAxis(in); got != want {
+			t.Errorf("cubeAxis(%d) = %d want %d", in, got, want)
+		}
+	}
+	if got := cube256(0, 0, 0); got != 16 {
+		t.Errorf("검정 = %d want 16", got)
+	}
+	if got := cube256(255, 255, 255); got != 231 {
+		t.Errorf("흰색 = %d want 231", got)
+	}
+}
