@@ -34,6 +34,10 @@ type Style struct {
 // 정확한 값을 알 길은 없다 — 배지 문구는 그때그때 다르다.
 const rightMargin = 40
 
+// sevenDayShowAt 은 7d 세그먼트가 나타나는 사용률이다. pctColor 의 warn 임계와
+// 같은 값이라, 노랗게 보일 만해지면 화면에도 올라온다.
+const sevenDayShowAt = 70
+
 func DefaultStyle() Style {
 	ct := os.Getenv("COLORTERM")
 	w, _ := strconv.Atoi(os.Getenv("COLUMNS")) // 없거나 이상하면 0 — 폭 판단을 건너뛴다
@@ -95,7 +99,11 @@ func Lines(v View, s Style) []string {
 	if w := v.Limits.FiveHour; w != nil {
 		parts = append(parts, windowText("5h", w, v, s))
 	}
-	if w := v.Limits.SevenDay; w != nil {
+	// 7d 는 평소에 볼 일이 없다 — 주 관심사는 5h 이고, 7d 리셋은 며칠 뒤라
+	// 자리만 차지한다. 색이 노래지기 시작하는 지점부터 나타난다(폴링이 촘촘해지는
+	// 경계와 같은 값). 경보를 올린 창은 임계와 무관하게 보여 준다 — alert_percent 를
+	// 이보다 낮게 잡은 설정에서 경보가 뜬 창이 숨는 일이 없어야 한다.
+	if w := v.Limits.SevenDay; w != nil && (w.Percent >= sevenDayShowAt || v.Alert.Window == "7d") {
 		parts = append(parts, windowText("7d", w, v, s))
 	}
 	if note := statusNote(v, s); note != "" {
@@ -299,24 +307,31 @@ func creditLine(v View, s Style) string {
 		}
 		return s.c(yellow, "💳 한도 소진 · 크레딧 조회 중…")
 	}
-	t := "💳 " + money(cur, cv.Used)
-	if cv.Limit != nil {
-		t += " / " + money(cur, *cv.Limit)
+	// 남은 금액을 낸다 — 5h·7d 가 남은 비율인데 크레딧만 쓴 금액이면 방향이 엇갈려
+	// 읽는 사람이 뒤집어 본다. 색도 한도 창과 같은 규칙으로 골라서, 90% 를 쓴 상태가
+	// 흐린 회색으로 조용히 지나가지 않게 한다.
+	amount, tone := money(cur, cv.Used), dim
+	if cv.Limit != nil && *cv.Limit > 0 {
+		amount = money(cur, *cv.Limit-cv.Used)
+		tone = s.pctColor(cv.Used / *cv.Limit * 100)
 	}
+	t := s.c(dim, "💳") + " " + s.c(tone, amount)
+	if cv.Limit != nil {
+		t += s.c(dim, " / "+money(cur, *cv.Limit))
+	}
+	tail := ""
 	if cv.SpentWindow > 0 {
-		t += " · 이번 window +" + money(cur, cv.SpentWindow)
+		tail += " · 이번 window +" + money(cur, cv.SpentWindow)
 	}
 	if cv.Spending {
-		return s.c(bold+red, t+" · 크레딧 소진 중")
+		return t + s.c(bold+red, tail+" · 크레딧 소진 중")
 	}
 	if hit, _ := v.Limits.Exhausted(); hit {
-		return s.c(yellow, t+" · 다음 prompt부터 크레딧 사용")
+		return t + s.c(yellow, tail+" · 다음 prompt부터 크레딧 사용")
 	}
-	return s.c(dim, t)
+	return t + s.c(dim, tail)
 }
 
-// pctColor maps 사용률 to a colour. 트루컬러면 끊김 없이 변하고, 아니면 3단계다.
-// 경보(배지·굵은 빨강)는 여기 오지 않는다 — 임계를 넘어선 상태라 고정색이 맞다.
 func (s Style) pctColor(p float64) string {
 	if s.TrueColor {
 		return gradient(p)

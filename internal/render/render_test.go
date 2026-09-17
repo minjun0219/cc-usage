@@ -52,7 +52,8 @@ func TestLinesSpending(t *testing.T) {
 	if !strings.Contains(lines[0], "5h 0% (1h 20m→") || !strings.Contains(lines[0], "ctx 42%") {
 		t.Errorf("line1: %s", lines[0])
 	}
-	if !strings.Contains(lines[1], "$10.80 / $50.00") || !strings.Contains(lines[1], "+$0.80") || !strings.Contains(lines[1], "소진 중") {
+	// 금액은 **남은 값**이다 — 쓴 값 $10.80 이 아니라 $50.00-$10.80.
+	if !strings.Contains(lines[1], "$39.20 / $50.00") || !strings.Contains(lines[1], "+$0.80") || !strings.Contains(lines[1], "소진 중") {
 		t.Errorf("line2: %s", lines[1])
 	}
 }
@@ -181,7 +182,7 @@ func TestCreditRowPlacement(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("여유에서는 크레딧이 상태 줄에 붙어야 한다: %q", lines)
 	}
-	if !strings.Contains(lines[0], "5h 70%") || !strings.Contains(lines[0], "💳 $11.60") {
+	if !strings.Contains(lines[0], "5h 70%") || !strings.Contains(lines[0], "💳 $38.40") {
 		t.Errorf("한 줄에 둘 다 있어야 한다: %q", lines[0])
 	}
 
@@ -258,14 +259,39 @@ func TestCreditFallsBelowWhenTooWide(t *testing.T) {
 	}
 }
 
+// 7d 는 평소에 숨고, 사용률이 올라가거나 경보를 올리면 나타난다.
+func TestSevenDayHiddenUntilItMatters(t *testing.T) {
+	now := time.Now()
+	c := &config.Config{}
+	c.ApplyDefaults()
+	uf := &store.UsageFile{}
+	row := func(pct float64, a core.Alert) string {
+		lim := core.Limits{FiveHour: &store.Window{Percent: 10},
+			SevenDay: &store.Window{Percent: pct}, FromStdin: true}
+		return Lines(View{Config: c, Model: "Opus 5", Limits: lim, Alert: a, Usage: uf,
+			Credits: core.Credits(c, lim, uf, now), Now: now}, Style{})[0]
+	}
+	if got := row(sevenDayShowAt-1, core.Alert{}); strings.Contains(got, "7d") {
+		t.Errorf("여유로운 7d 는 숨어야 한다: %q", got)
+	}
+	if got := row(sevenDayShowAt, core.Alert{}); !strings.Contains(got, "7d") {
+		t.Errorf("임계에 닿으면 나타나야 한다: %q", got)
+	}
+	// alert_percent 를 이보다 낮게 잡은 설정에서 경보가 뜬 창이 숨으면 안 된다.
+	if got := row(30, core.Alert{Level: core.AlertNear, Window: "7d"}); !strings.Contains(got, "7d") {
+		t.Errorf("경보를 올린 7d 는 임계 아래여도 나타나야 한다: %q", got)
+	}
+}
+
 func TestWindowAlertEmphasis(t *testing.T) {
 	now := time.Now()
 	p := &config.Config{}
 	p.ApplyDefaults()
 	uf := &store.UsageFile{}
 	lim := core.Limits{
-		FiveHour:  &store.Window{Percent: 95},
-		SevenDay:  &store.Window{Percent: 40},
+		FiveHour: &store.Window{Percent: 95},
+		// 7d 는 sevenDayShowAt 위여야 화면에 올라온다 — 75% 사용 → 남은 25%.
+		SevenDay:  &store.Window{Percent: 75},
 		FromStdin: true,
 	}
 	line := func(a core.Alert) string {
@@ -283,7 +309,7 @@ func TestWindowAlertEmphasis(t *testing.T) {
 		t.Errorf("꺼진 프레임·burst 종료 후는 굵은 빨강: off=%q rest=%q", off, rest)
 	}
 	// 경보를 올리지 않은 window는 평소 색 그대로다.
-	if !strings.Contains(on, green+"60%") {
+	if !strings.Contains(on, yellow+"25%") {
 		t.Errorf("7d는 건드리지 않아야 한다: %q", on)
 	}
 	// 경보가 없으면 임계값 색 규칙만 적용된다.
