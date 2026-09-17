@@ -34,6 +34,15 @@ type Style struct {
 // 정확한 값을 알 길은 없다 — 배지 문구는 그때그때 다르다.
 const rightMargin = 40
 
+// ctx 밝기 곡선. 지수와 계단 경계를 함께 뒤로 미뤄, 볼 일 없는 구간에서
+// 눈을 끌지 않게 한다. payload 가 compaction 지점을 주지 않아 "위험" 을 말할
+// 근거가 없으므로, 색은 위험이 아니라 차오르는 정도만 나타낸다.
+const (
+	ctxCurve  = 2.2
+	ctxMidAt  = 80
+	ctxHighAt = 95
+)
+
 // sevenDayShowAt 은 7d 세그먼트가 나타나는 사용률이다. pctColor 의 warn 임계와
 // 같은 값이라, 노랗게 보일 만해지면 화면에도 올라온다.
 const sevenDayShowAt = 70
@@ -59,6 +68,9 @@ const (
 	green   = "\033[32m"
 	cyan    = "\033[36m"
 	blue    = "\033[1;34m"
+	ctxLow  = "\033[34m" // 파랑 — truecolor 가 없을 때의 ctx 단계
+	ctxMid  = "\033[94m" // 밝은 파랑
+	ctxHigh = "\033[96m" // 밝은 청록
 	magenta = "\033[1;35m"
 	yellow  = "\033[33m"
 	red     = "\033[31m"
@@ -94,7 +106,7 @@ func Lines(v View, s Style) []string {
 		parts = append(parts, s.c(magenta, v.Model))
 	}
 	if v.ContextPct != nil {
-		parts = append(parts, "ctx "+s.c(s.pctColor(*v.ContextPct), fmt.Sprintf("%.0f%%", *v.ContextPct)))
+		parts = append(parts, "ctx "+s.c(s.ctxColor(*v.ContextPct), fmt.Sprintf("%.0f%%", *v.ContextPct)))
 	}
 	if w := v.Limits.FiveHour; w != nil {
 		parts = append(parts, windowText("5h", w, v, s))
@@ -365,6 +377,34 @@ func (s Style) pctColor(p float64) string {
 		return yellow
 	default:
 		return green
+	}
+}
+
+// ctxColor is the 파랑 계열. 한도 창과 **다른 축**이라 색도 다른 축을 쓴다 —
+// context 가 차는 것은 막히는 일이 아니라 곧 compaction 이 되는 일이고, 빨강은
+// "여기서 멈춘다" 를 뜻하는 자리로 남겨 둔다(한도 창과 경보). 한 줄에 임계색이
+// 셋(ctx · 5h · 7d)이면 경보 배지가 색으로 경쟁에서 진다.
+//
+// 임계를 숫자로 정하지 않은 이유도 있다. payload 에 compaction 지점이 오지 않아
+// 몇 %가 위험한지 말할 근거가 없다 — 말할 수 없는 것을 색으로 말하지 않는다.
+// 대신 차오를수록 밝아지기만 하되, **뒤로 몰아서** 밝아진다. 선형으로 올리면
+// 40% 에서 벌써 중간 밝기가 되어 볼 일 없는 구간이 눈을 끈다. 지수를 씌워
+// 80% 를 넘어서부터 확 밝아지게 한다 — 41% 는 0.14, 80% 는 0.60, 95% 는 0.89.
+func (s Style) ctxColor(p float64) string {
+	p = math.Max(0, math.Min(100, p))
+	if s.TrueColor {
+		t := math.Pow(p/100, ctxCurve)
+		return fmt.Sprintf("\033[38;2;%d;%d;%dm",
+			int(75+45*t), int(95+95*t), int(130+125*t))
+	}
+	// truecolor 가 없을 때의 계단. 경계도 같은 이유로 뒤에 둔다.
+	switch {
+	case p >= ctxHighAt:
+		return ctxHigh
+	case p >= ctxMidAt:
+		return ctxMid
+	default:
+		return ctxLow
 	}
 }
 

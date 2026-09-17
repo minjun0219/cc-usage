@@ -394,3 +394,25 @@ func TestMoneyShort(t *testing.T) {
 		t.Errorf("money(100) = %q", got)
 	}
 }
+
+func TestCtxColorStaysOutOfTheRedAxis(t *testing.T) {
+	// ctx 는 빨강 축을 쓰지 않는다 — 빨강은 "여기서 멈춘다"(한도·경보) 자리다.
+	for _, s := range []Style{{Color: true}, {Color: true, TrueColor: true}} {
+		for _, p := range []float64{0, 41, 70, 90, 100} {
+			got := s.ctxColor(p)
+			if got == red || got == yellow || got == green || got == redBG {
+				t.Errorf("TrueColor=%v ctx %v%% 가 한도 색을 쓴다: %q", s.TrueColor, p, got)
+			}
+		}
+	}
+	// 차오를수록 밝아진다 (truecolor 세 채널 모두 단조 증가).
+	prev := [3]int{-1, -1, -1}
+	for p := 0.0; p <= 100; p += 10 {
+		var r, g, b int
+		fmt.Sscanf((Style{Color: true, TrueColor: true}).ctxColor(p), "\033[38;2;%d;%d;%dm", &r, &g, &b)
+		if r < prev[0] || g < prev[1] || b < prev[2] {
+			t.Errorf("%v%% 에서 밝기가 꺾인다: %d,%d,%d ← %v", p, r, g, b, prev)
+		}
+		prev = [3]int{r, g, b}
+	}
+}
