@@ -191,7 +191,11 @@ func Credits(p *config.Config, lim Limits, uf *store.UsageFile, now time.Time) C
 	}
 	rising := !uf.CreditsRisingAt.IsZero() && now.Sub(uf.CreditsRisingAt) < risingWindow
 	v.Spending = v.SpentWindow > 0 || rising
-	v.Show = hit || v.Spending || p.AlwaysShowCredits
+	// API 모드(Team 등)는 이미 poll 주기로 usage 를 부르고 있고 크레딧이 같은
+	// 응답에 실려 온다 — 손에 든 값을 숨길 이유가 없다. 호출이 늘지 않으므로
+	// always_show_credits 를 켜지 않아도 보인다. stdin 모드는 그대로다: 거기서
+	// 상시 표시는 한도 전에도 API 를 부르게 되므로 설정으로 남는다.
+	v.Show = hit || v.Spending || p.AlwaysShowCredits || !lim.FromStdin
 	return v
 }
 

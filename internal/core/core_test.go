@@ -150,6 +150,45 @@ func TestCreditBaselineAndSpending(t *testing.T) {
 	}
 }
 
+// API 모드는 이미 usage 를 폴링하므로 크레딧을 숨길 이유가 없다. stdin 모드는
+// 한도 전에 보여주려면 API 를 더 불러야 하므로 설정을 켰을 때만 보인다.
+func TestCreditsShownInAPIMode(t *testing.T) {
+	now := time.Now()
+	uf := &store.UsageFile{}
+	ApplyFetch(uf, usage(1000, 30), false, "", now)
+
+	api := Credits(profile(config.SourceAPI), Limits{
+		FiveHour: &store.Window{Percent: 30}, FromStdin: false}, uf, now)
+	if !api.Show || !api.Enabled || api.Used != 10 {
+		t.Errorf("API 모드는 한도 전에도 크레딧을 보여야 한다: %+v", api)
+	}
+
+	stdin := Credits(profile(config.SourceStdin), Limits{
+		FiveHour: &store.Window{Percent: 30}, FromStdin: true}, uf, now)
+	if stdin.Show {
+		t.Errorf("stdin 모드는 설정 없이 보이면 안 된다: %+v", stdin)
+	}
+
+	p := profile(config.SourceStdin)
+	p.AlwaysShowCredits = true
+	if on := Credits(p, Limits{FiveHour: &store.Window{Percent: 30}, FromStdin: true}, uf, now); !on.Show {
+		t.Errorf("always_show_credits 를 켜면 stdin 모드도 보여야 한다: %+v", on)
+	}
+}
+
+// 크레딧이 비활성이거나 응답에 없으면 API 모드여도 줄을 내지 않는다 — 매 렌더마다
+// "크레딧 비활성" 이 붙으면 그게 노이즈다.
+func TestCreditsHiddenWhenExtraAbsent(t *testing.T) {
+	now := time.Now()
+	uf := &store.UsageFile{}
+	ApplyFetch(uf, &store.Usage{FetchedAt: now}, false, "", now) // extra 없음
+	cv := Credits(profile(config.SourceAPI), Limits{
+		FiveHour: &store.Window{Percent: 30}, FromStdin: false}, uf, now)
+	if cv.Show || cv.Enabled {
+		t.Errorf("크레딧 정보가 없으면 줄을 내지 않는다: %+v", cv)
+	}
+}
+
 func TestExpiredWindowDropped(t *testing.T) {
 	now := time.Now()
 	st := &store.StateFile{ObservedAt: now.Add(-time.Hour), FiveHour: &store.Window{Percent: 100, ResetsAt: now.Add(-time.Minute)}}

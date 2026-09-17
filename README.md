@@ -20,6 +20,7 @@ Sonnet · ctx 40% · 5h 0% (1h20m→18:00) · 7d 45% (2d4h)
 
 - `cc-usage statusline`은 **network를 기다리지 않습니다.** usage API는 이 경로에서 호출하지 않고, 갱신이 필요하면 `cc-usage refresh`를 detached로 띄운 뒤 즉시 종료합니다. 로컬 subprocess(`git status`, `extra_commands`)는 타임아웃을 걸고 부르며, 느리거나 실패하면 그 세그먼트만 빠집니다. `extra_commands`에 network를 타는 명령을 넣는 것은 설정하는 쪽의 선택이고, 그 지연은 타임아웃이 막습니다.
 - `refresh`는 lock으로 동시에 하나만 실행되고, 실패 시 1m → 32m(최대 30m) backoff, 429의 `Retry-After`를 존중합니다.
+- **api 모드(Team 등)는 한도 전에도 크레딧 줄을 냅니다.** 이미 `poll_seconds` 주기로 usage API를 부르고 있고 크레딧이 같은 응답에 실려 오므로, 보여줘도 호출이 늘지 않습니다. 크레딧이 비활성이거나 응답에 없으면 줄 자체를 내지 않습니다. stdin 모드는 한도 전에 보여주려면 API를 더 불러야 하므로 `always_show_credits`를 켰을 때만 나옵니다.
 - 한도 100%가 처음 관측된 시점의 `used_credits`를 baseline으로 저장해서 "이번 window에서 쓴 크레딧"을 계산합니다. 첫 조회 전 소진분은 포함되지 않습니다.
 - `5h`/`7d` 숫자는 **남은 비율**입니다(100 − 사용률). 쓴 양보다 남은 양이 "지금 뭘 할 수 있나"에 바로 답하기 때문입니다. 색은 사용률로 고르므로 숫자가 작아질수록 빨개집니다. 괄호는 리셋까지 남은 시간이고, 하루를 넘으면 어느 날인지 모호해지므로 시각을 빼고 남은 시간만 냅니다.
 - 경로 줄은 stdin의 `workspace.current_dir`에서 나옵니다. 브랜치 상태는 `git status --porcelain=v2 --branch --untracked-files=no` **한 번**으로 읽습니다 — 브랜치명, 변경 파일 수(`=` conflict / `+` staged / `!` unstaged), ahead(`⇡`)/behind(`⇣`). 개수는 porcelain=v2가 파일당 한 줄을 뱉고 `XY` 필드가 staged/unstaged를 구분해 주므로 추가 git 호출이 없습니다. untracked는 스캔 비용 때문에 세지 않습니다(`--untracked-files=no`). git repo가 아니거나 500ms를 넘기면 세그먼트만 빠집니다.
@@ -49,7 +50,7 @@ make install            # ~/.local/bin/cc-usage
 | `credit_poll_seconds` | 300 | 한도 소진 후 크레딧 조회 주기 |
 | `credit_divisor` | 100 | `used_credits` 단위 환산 (cent 가정) |
 | `currency` | `$` | 표시 통화 기호 |
-| `always_show_credits` | false | 한도 전에도 크레딧 줄 표시 (stdin 모드에서는 API 호출이 늘어남) |
+| `always_show_credits` | false | stdin 모드에서 한도 전에도 크레딧 줄 표시 (API 호출이 늘어남). **api 모드는 이 설정 없이도 항상 표시**합니다 |
 | `alert_percent` | 90 | 이 %를 넘으면 "임박" 강조. 범위 밖(예: `-1`)이면 임박 경고를 끄고 소진만 강조 |
 | `notify` | – | 한도 단계가 올라갈 때 1회 실행할 명령 (아래 참고) |
 | `guard` | false | `cc-usage guard` 활성화 |

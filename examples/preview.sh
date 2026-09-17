@@ -53,4 +53,25 @@ show "git repo 밖" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"/tmp\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
 
 show "빈 payload — 직전 stdin 값을 cache에서 그대로 쓴다" ""
+
+# Team(api) 모드 — 한도 전에도 크레딧 줄이 뜬다. stdin 이 아니라 cache 의 usage 에서
+# 한도가 오는 상황이라, rate_limits 없는 payload 와 창이 담긴 usage.json 으로 만든다.
+API_DIR=$(mktemp -d)
+export XDG_CACHE_HOME="$API_DIR/cache" CC_USAGE_CONFIG="$API_DIR/config.json"
+cat > "$API_DIR/config.json" <<JSON
+{"source":"api", "alert_percent":90,
+ "keychain_service":"cc-usage-preview-absent",
+ "credentials_file":"$API_DIR/absent.json"}
+JSON
+mkdir -p "$XDG_CACHE_HOME/cc-usage"
+cat > "$XDG_CACHE_HOME/cc-usage/usage.json" <<JSON
+{"usage":{"fetched_at":"$(date -u -r "$NOW" +%Y-%m-%dT%H:%M:%SZ)",
+  "five_hour":{"percent":35,"resets_at":"$(date -u -r "$R5" +%Y-%m-%dT%H:%M:%SZ)"},
+  "seven_day":{"percent":60,"resets_at":"$(date -u -r "$R7" +%Y-%m-%dT%H:%M:%SZ)"},
+  "extra":{"enabled":true,"used_credits":1160,"monthly_limit":5000}}}
+JSON
+
+show "Team(api) — 한도 전에도 크레딧" \
+ "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"}}"
+rm -rf "$API_DIR"
 printf '\n'
