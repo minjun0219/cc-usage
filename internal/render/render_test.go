@@ -165,6 +165,38 @@ func TestPctColorGradientAndFallback(t *testing.T) {
 	}
 }
 
+// 평소 크레딧은 상태 줄 끝에 붙고, 강조가 붙는 상태만 줄을 따로 쓴다.
+func TestCreditRowPlacement(t *testing.T) {
+	now := time.Now()
+	c := &config.Config{}
+	c.ApplyDefaults()
+	used, limit := 1160.0, 5000.0
+	uf := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
+		Extra: &store.Extra{Enabled: true, UsedCredits: &used, MonthlyLimit: &limit}}}
+
+	// 여유 — 한 줄로 끝난다.
+	idle := core.Limits{FiveHour: &store.Window{Percent: 30}, FromStdin: true}
+	lines := Lines(View{Config: c, Model: "Opus 5", Limits: idle, Usage: uf,
+		Credits: core.Credits(c, idle, uf, now), Now: now}, Style{})
+	if len(lines) != 1 {
+		t.Fatalf("여유에서는 크레딧이 상태 줄에 붙어야 한다: %q", lines)
+	}
+	if !strings.Contains(lines[0], "5h 70%") || !strings.Contains(lines[0], "💳 $11.60") {
+		t.Errorf("한 줄에 둘 다 있어야 한다: %q", lines[0])
+	}
+
+	// 소진 — 문장이 길어지므로 줄을 따로 쓴다.
+	hit := core.Limits{FiveHour: &store.Window{Percent: 100}, FromStdin: true}
+	lines = Lines(View{Config: c, Model: "Opus 5", Limits: hit, Usage: uf,
+		Credits: core.Credits(c, hit, uf, now), Now: now}, Style{})
+	if len(lines) != 2 {
+		t.Fatalf("소진에서는 크레딧이 제 줄을 가져야 한다: %q", lines)
+	}
+	if strings.Contains(lines[0], "💳") || !strings.Contains(lines[1], "💳") {
+		t.Errorf("크레딧은 둘째 줄이어야 한다: %q", lines)
+	}
+}
+
 func TestWindowAlertEmphasis(t *testing.T) {
 	now := time.Now()
 	p := &config.Config{}

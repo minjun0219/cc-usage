@@ -84,6 +84,13 @@ func Lines(v View, s Style) []string {
 	if note := statusNote(v, s); note != "" {
 		parts = append(parts, note)
 	}
+	// 크레딧은 평소엔 상태 줄 끝에 붙는다 — statusline 이 세로로 차지하는 칸이
+	// 곧 프롬프트가 밀리는 양이다. 강조가 붙는 경우만 줄을 따로 쓰는데, 문장이
+	// 길어서이기도 하고 줄이 하나 느는 것 자체가 신호이기도 하다.
+	cl, standalone := creditLine(v, s), creditStandalone(v)
+	if cl != "" && !standalone {
+		parts = append(parts, cl)
+	}
 	var lines []string
 	if dl := dirLine(v, s); dl != "" {
 		lines = append(lines, dl)
@@ -91,7 +98,7 @@ func Lines(v View, s Style) []string {
 	if row := strings.Join(parts, s.c(dim, " · ")); row != "" {
 		lines = append(lines, row)
 	}
-	if cl := creditLine(v, s); cl != "" {
+	if cl != "" && standalone {
 		lines = append(lines, cl)
 	}
 	if len(lines) == 0 {
@@ -229,6 +236,18 @@ func statusNote(v View, s Style) string {
 		return s.c(yellow, "⚠︎ stale "+Duration(v.Now.Sub(uf.Usage.FetchedAt)))
 	}
 	return ""
+}
+
+// creditStandalone reports whether the credit text needs its own row. 강조가
+// 붙는 상태(크레딧 소진 중 · 한도 소진 · 조회 중 · 비활성)는 문장이 길어져 상태
+// 줄을 감기게 만든다. creditLine 의 분기와 짝이므로 한쪽만 고치지 않는다.
+func creditStandalone(v View) bool {
+	cv := v.Credits
+	if !cv.Enabled || cv.Spending {
+		return true
+	}
+	hit, _ := v.Limits.Exhausted()
+	return hit
 }
 
 func creditLine(v View, s Style) string {
