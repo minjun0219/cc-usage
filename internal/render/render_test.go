@@ -197,6 +197,62 @@ func TestCreditRowPlacement(t *testing.T) {
 	}
 }
 
+func TestDisplayWidth(t *testing.T) {
+	for in, want := range map[string]int{
+		"":                              0,
+		"5h 70%":                        6,
+		"\033[32m70%\033[0m":            3,  // ANSI 는 폭이 없다
+		"💳 $11.60":                      9,  // 이모지 2 + 공백 1 + "$11.60" 6
+		"크레딧 소진 중":                      14, // 한글 6자 × 2 + 공백 2
+		"\033[90m(1h 20m→10:17)\033[0m": 14, // → 는 1칸
+	} {
+		if got := displayWidth(in); got != want {
+			t.Errorf("%q: got %d want %d", in, got, want)
+		}
+	}
+	// 화살표는 Ambiguous 라 1칸으로 센다 (대부분의 터미널이 그렇게 그린다).
+	if got := displayWidth("→"); got != 1 {
+		t.Errorf("→: got %d want 1", got)
+	}
+	if got := displayWidth("⎇ main"); got != 6 {
+		t.Errorf("⎇ main: got %d want 6", got)
+	}
+}
+
+// 폭을 알면(COLUMNS) 붙였을 때 넘칠 크레딧은 내린다. 모르면 기존 규칙만 쓴다.
+func TestCreditFallsBelowWhenTooWide(t *testing.T) {
+	now := time.Now()
+	c := &config.Config{}
+	c.ApplyDefaults()
+	used, limit := 1160.0, 5000.0
+	uf := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
+		Extra: &store.Extra{Enabled: true, UsedCredits: &used, MonthlyLimit: &limit}}}
+	lim := core.Limits{FiveHour: &store.Window{Percent: 30}, FromStdin: true}
+	view := View{Config: c, Model: "Opus 5 (1M context)", Limits: lim, Usage: uf,
+		Credits: core.Credits(c, lim, uf, now), Now: now}
+
+	wide := Lines(view, Style{Width: 200})
+	if len(wide) != 1 {
+		t.Errorf("넓으면 한 줄이어야 한다: %q", wide)
+	}
+	narrow := Lines(view, Style{Width: 30})
+	if len(narrow) != 2 || !strings.Contains(narrow[1], "💳") {
+		t.Errorf("좁으면 크레딧이 내려가야 한다: %q", narrow)
+	}
+	unknown := Lines(view, Style{}) // COLUMNS 없음 → 폭 판단 생략
+	if len(unknown) != 1 {
+		t.Errorf("폭을 모르면 기존대로 붙인다: %q", unknown)
+	}
+	// 경계: 딱 맞으면 붙이고 한 칸 모자라면 내린다.
+	exact := displayWidth(Lines(view, Style{Width: 200})[0])
+	if got := Lines(view, Style{Width: exact}); len(got) != 1 {
+		t.Errorf("폭이 정확히 맞으면 붙인다(%d칸): %q", exact, got)
+	}
+	if got := Lines(view, Style{Width: exact - 1}); len(got) != 2 {
+		t.Errorf("한 칸 모자라면 내린다(%d칸): %q", exact-1, got)
+	}
+}
+
 func TestWindowAlertEmphasis(t *testing.T) {
 	now := time.Now()
 	p := &config.Config{}

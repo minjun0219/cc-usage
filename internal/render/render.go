@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,13 +21,21 @@ type Style struct {
 	// ANSI 색으로 떨어진다 — 지원하지 않는 터미널에서 이스케이프가 글자로 새는
 	// 것보다 계단식 색이 낫다.
 	TrueColor bool
+	// Width is the terminal column count, 0이면 모름. statusline 은 stdout 이
+	// 파이프라 tput·ioctl 로는 폭을 알 수 없고, Claude Code 가 COLUMNS 로 넣어 준다.
+	Width int
 }
 
 func DefaultStyle() Style {
 	ct := os.Getenv("COLORTERM")
+	w, _ := strconv.Atoi(os.Getenv("COLUMNS")) // 없거나 이상하면 0 — 폭 판단을 건너뛴다
+	if w < 0 {
+		w = 0
+	}
 	return Style{
 		Color:     os.Getenv("NO_COLOR") == "",
 		TrueColor: ct == "truecolor" || ct == "24bit",
+		Width:     w,
 	}
 }
 
@@ -84,21 +93,28 @@ func Lines(v View, s Style) []string {
 	if note := statusNote(v, s); note != "" {
 		parts = append(parts, note)
 	}
-	// 크레딧은 평소엔 상태 줄 끝에 붙는다 — statusline 이 세로로 차지하는 칸이
-	// 곧 프롬프트가 밀리는 양이다. 강조가 붙는 경우만 줄을 따로 쓰는데, 문장이
-	// 길어서이기도 하고 줄이 하나 느는 것 자체가 신호이기도 하다.
-	cl, standalone := creditLine(v, s), creditStandalone(v)
-	if cl != "" && !standalone {
-		parts = append(parts, cl)
-	}
 	var lines []string
 	if dl := dirLine(v, s); dl != "" {
 		lines = append(lines, dl)
 	}
-	if row := strings.Join(parts, s.c(dim, " · ")); row != "" {
+
+	// 크레딧은 평소엔 상태 줄 끝에 붙는다 — statusline 이 세로로 차지하는 칸이
+	// 곧 프롬프트가 밀리는 양이다. 내려야 할 때만 줄을 따로 쓴다.
+	sep := s.c(dim, " · ")
+	row := strings.Join(parts, sep)
+	cl := creditLine(v, s)
+	standalone := cl != "" && s.creditStandalone(v, row, cl, sep)
+	if cl != "" && !standalone {
+		if row == "" {
+			row = cl
+		} else {
+			row += sep + cl
+		}
+	}
+	if row != "" {
 		lines = append(lines, row)
 	}
-	if cl != "" && standalone {
+	if standalone {
 		lines = append(lines, cl)
 	}
 	if len(lines) == 0 {
@@ -238,16 +254,29 @@ func statusNote(v View, s Style) string {
 	return ""
 }
 
-// creditStandalone reports whether the credit text needs its own row. 강조가
-// 붙는 상태(크레딧 소진 중 · 한도 소진 · 조회 중 · 비활성)는 문장이 길어져 상태
-// 줄을 감기게 만든다. creditLine 의 분기와 짝이므로 한쪽만 고치지 않는다.
-func creditStandalone(v View) bool {
+// creditStandalone reports whether the credit text needs its own row.
+//
+// 두 가지 이유로 내린다. 하나는 강조가 붙는 상태(크레딧 소진 중 · 한도 소진 ·
+// 조회 중 · 비활성)로, 문장이 길어지는 데다 줄이 하나 느는 것 자체가 신호가 된다
+// — creditLine 의 분기와 짝이므로 한쪽만 고치지 않는다. 다른 하나는 폭으로,
+// 터미널을 알 때(COLUMNS) 붙이면 넘칠 경우다. 넘치면 터미널이 잘라 내거나 감아서
+// 어차피 두 줄이 되는데, 그 두 줄은 우리가 고른 자리에서 갈리지 않는다.
+func (s Style) creditStandalone(v View, row, credit, sep string) bool {
 	cv := v.Credits
 	if !cv.Enabled || cv.Spending {
 		return true
 	}
-	hit, _ := v.Limits.Exhausted()
-	return hit
+	if hit, _ := v.Limits.Exhausted(); hit {
+		return true
+	}
+	if s.Width <= 0 {
+		return false
+	}
+	w := displayWidth(row) + displayWidth(credit)
+	if row != "" {
+		w += displayWidth(sep)
+	}
+	return w > s.Width
 }
 
 func creditLine(v View, s Style) string {
