@@ -74,7 +74,7 @@ make install            # ~/.local/bin/cc-usage
 | `credit_divisor` | 100 | `used_credits` 단위 환산 (cent 가정) |
 | `currency` | `$` | 표시 통화 기호 |
 | `always_show_credits` | false | 크레딧이 0이어도 줄 표시. stdin 모드에서는 한도 전에도 API를 부르게 됩니다 |
-| `alert_percent` | 90 | 이 %를 넘으면 "임박" 강조. 범위 밖(예: `-1`)이면 임박 경고를 끄고 소진만 강조 |
+| `alert_percent` | 90 | 이 %를 넘으면 "임박" 강조. **`0`이면 임박 경고를 끄고** 소진(100%)만 강조 |
 | `notify` | – | 한도 단계가 올라갈 때 1회 실행할 명령 (아래 참고) |
 | `guard` | false | `cc-usage guard` 활성화 |
 | `extra_commands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |

@@ -84,7 +84,7 @@ func worstWindow(p *config.Config, lim Limits) (AlertLevel, string, float64, str
 		switch {
 		case c.w.Percent >= 100:
 			l = AlertOver
-		case p.AlertPercent > 0 && c.w.Percent >= p.AlertPercent:
+		case p.Alert() > 0 && c.w.Percent >= p.Alert():
 			l = AlertNear
 		}
 		if l > best {

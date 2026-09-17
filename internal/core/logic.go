@@ -102,7 +102,7 @@ func windowKey(name string, w *store.Window) string {
 
 // NeedRefresh decides whether statusline should spawn `cc-usage refresh`.
 // 여유 구간에서 간격을 늘리는 배수와 그 경계. 경계를 alert_percent 가 아니라
-// 따로 둔 것은, 임박 경고를 꺼도(alert_percent=0) 폴링은 여전히 촘촘해져야 하기
+// 따로 둔 것은, 임박 경고를 꺼도(alert_percent: 0) 폴링은 여전히 촘촘해져야 하기
 // 때문이다. 70 은 색이 노래지기 시작하는 지점과 같다 — 화면과 동작이 같은 말을 한다.
 const (
 	idlePollFactor = 3

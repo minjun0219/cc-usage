@@ -34,8 +34,10 @@ type Config struct {
 	AlwaysShowCredits bool    `json:"always_show_credits"`
 	Guard             bool    `json:"guard"`
 
-	// AlertPercent is the "임박" threshold. 0이면 소진(100%)에서만 강조한다.
-	AlertPercent float64 `json:"alert_percent"`
+	// AlertPercent is the "임박" threshold. 설정에 없으면 90, **0이면 임박 경고를
+	// 끈다**(소진 강조는 남는다). 0이 "끔" 이 되려면 "설정에 없음" 과 구분해야 해서
+	// 포인터다 — label·notify.enabled 와 같은 이유다. 읽을 때는 Alert() 를 쓴다.
+	AlertPercent *float64 `json:"alert_percent"`
 	// Notify fires once per 단계 when a limit is hit. nil이면 알림 없음.
 	Notify *Notify `json:"notify"`
 
@@ -94,6 +96,19 @@ func (e ExtraCommand) Timeout() time.Duration {
 	return time.Duration(e.TimeoutMS) * time.Millisecond
 }
 
+// Alert is the 임박 threshold to compare 사용률 against. 0이면 임박 경고를
+// 쓰지 않는다 — 범위를 벗어난 값도 0으로 본다(경보를 통째로 잃는 대신 소진만 남는다).
+func (c *Config) Alert() float64 {
+	if c.AlertPercent == nil {
+		return 90
+	}
+	p := *c.AlertPercent
+	if p < 0 || p > 100 {
+		return 0
+	}
+	return p
+}
+
 func (c *Config) Poll() time.Duration       { return time.Duration(c.PollSeconds) * time.Second }
 func (c *Config) CreditPoll() time.Duration { return time.Duration(c.CreditPollSeconds) * time.Second }
 
@@ -146,12 +161,6 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.CreditPollSeconds <= 0 {
 		c.CreditPollSeconds = 300
-	}
-	if c.AlertPercent == 0 {
-		c.AlertPercent = 90
-	}
-	if c.AlertPercent < 0 || c.AlertPercent > 100 {
-		c.AlertPercent = 0 // 범위를 벗어나면 임박 경고를 끈다 (소진 강조는 남는다)
 	}
 	if c.CreditDivisor <= 0 {
 		c.CreditDivisor = 100

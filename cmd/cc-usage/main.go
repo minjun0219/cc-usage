@@ -323,7 +323,7 @@ func runDoctor(args []string) error {
 	fmt.Printf("creds file:    %s\n", p.CredentialsFile)
 	fmt.Printf("cache dir:     %s\n", store.Dir())
 	fmt.Printf("guard:         %v\n", p.Guard)
-	fmt.Printf("alert:         임박 %.0f%% (0이면 소진만)\n", p.AlertPercent)
+	fmt.Printf("alert:         임박 %.0f%% (0이면 소진만)\n", p.Alert())
 	fmt.Printf("notify:        %v\n", p.NotifyState())
 
 	tok, err := auth.Load(context.Background(), p)

@@ -110,7 +110,8 @@ func TestAlertsSameLevelPrefersSevenDay(t *testing.T) {
 }
 
 func TestAlertsNearDisabled(t *testing.T) {
-	p := &config.Config{AlertPercent: -1} // 범위 밖 → 임박 경고 끔
+	off := 0.0
+	p := &config.Config{AlertPercent: &off} // 0 → 임박 경고 끔
 	p.ApplyDefaults()
 	lim := Limits{FiveHour: &store.Window{Percent: 99}}
 	if a, _ := Alerts(p, lim, &store.StateFile{}, time.Now()); a.Level != AlertNone {
