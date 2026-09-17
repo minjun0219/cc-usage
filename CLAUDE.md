@@ -30,9 +30,19 @@ examples/           config, settings.json 예시
 
 작업 방식(브랜치 정책 · 게이트 · preview · 설치 규칙)은 [AGENTS.md](AGENTS.md)에 있다.
 
+## 실제 Team 계정으로 확인한 것 (2026-09-17)
+
+`cc-usage probe` 1회 + 그 응답을 `CC_USAGE_API_URL`로 되먹여 end-to-end 확인.
+
+- **`extra_usage`는 온다.** `is_enabled` · `used_credits` · `monthly_limit` · `utilization` 모두 채워져 온다.
+- **`utilization`은 0-100이 맞다.** 창(`five_hour`/`seven_day`)과 `extra_usage` 모두 같은 범위다.
+- **`used_credits`는 cent가 맞다.** 응답이 `decimal_places: 2`를 같이 주고, `used_credits / monthly_limit`이 `extra_usage.utilization`과 정확히 맞아떨어진다. 즉 `credit_divisor: 100` 기본값이 옳다.
+- 창의 `limit_dollars` · `used_dollars` · `remaining_dollars`는 전부 `null`로 온다 — 금액이 아니라 `utilization`만 쓸 수 있다.
+- `resets_at`은 epoch가 아니라 ISO8601 문자열이다 (`ParseInput`이 이미 양쪽을 받는다).
+
+아직 쓰지 않는 필드: `decimal_places` · `currency`("USD") · `spend_limit_reached` · `user_disabled` · `disabled_reason`. 앞 둘은 `credit_divisor`/`currency` 설정을 없앨 근거가 되고, `spend_limit_reached`는 guard가 볼 만하다.
+
 ## 미확인 사항 (실제 계정으로 검증 필요)
 
-- Team plan 계정에서 `/api/oauth/usage`가 `extra_usage`를 반환하는지
-- `utilization` 범위(0-100 가정)와 `used_credits` 단위(cent 가정)
 - `CLAUDE_CONFIG_DIR` 사용 시 keychain service 이름 규칙 (`cc-usage doctor`로 확인)
 - 크레딧으로 넘어간 뒤에도 stdin `rate_limits`가 100%로 유지되는지
