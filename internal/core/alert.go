@@ -26,18 +26,17 @@ const (
 	alertFrame = 500 * time.Millisecond
 )
 
-// Alert drives both the statusline 강조와 알림. 둘은 같은 엣지를 공유한다.
+// Alert drives the statusline 강조.
 type Alert struct {
 	Level   AlertLevel
 	Window  string // "5h" / "7d" — 강조할 세그먼트
 	Percent float64
 	Burst   bool // 지금이 깜빡이는 구간인가
 	On      bool // burst 중 현재 프레임이 "켜짐"인가
-	Fired   bool // 이번 렌더가 엣지 — 알림을 한 번 띄울 때
 }
 
 // Alerts reports the current alert and updates st. dirty가 true면 state를 써야
-// 한다. st를 갱신하는 쪽이 엣지를 소비하므로, 다음 렌더에서는 Fired가 꺼진다.
+// 한다. 단계가 올라간 시점(AlertAt)을 기록해 두어야 burst 구간을 알 수 있다.
 func Alerts(p *config.Config, lim Limits, st *store.StateFile, now time.Time) (Alert, bool) {
 	level, name, pct, wkey := worstWindow(p, lim)
 	if level == AlertNone {
@@ -53,7 +52,7 @@ func Alerts(p *config.Config, lim Limits, st *store.StateFile, now time.Time) (A
 	dirty := false
 	if st.AlertKey != key {
 		st.AlertKey, st.AlertAt = key, now
-		dirty, a.Fired = true, true
+		dirty = true
 	}
 	if d := now.Sub(st.AlertAt); d >= 0 && d < AlertBurst {
 		a.Burst = true
@@ -92,26 +91,4 @@ func worstWindow(p *config.Config, lim Limits) (AlertLevel, string, float64, str
 		}
 	}
 	return best, name, pct, wkey
-}
-
-// Message is the notification text for this alert.
-func (a Alert) Message() string {
-	switch a.Level {
-	case AlertOver:
-		return fmt.Sprintf("%s 한도 소진 — 이 다음부터 크레딧이 차감됩니다", a.Window)
-	case AlertNear:
-		return fmt.Sprintf("%s 한도 %.0f%% — 곧 크레딧으로 넘어갑니다", a.Window, a.Percent)
-	}
-	return ""
-}
-
-// LevelName is the {{level}} placeholder value.
-func (a Alert) LevelName() string {
-	switch a.Level {
-	case AlertOver:
-		return "over"
-	case AlertNear:
-		return "near"
-	}
-	return "none"
 }
