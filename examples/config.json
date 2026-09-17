@@ -5,7 +5,12 @@
   "guard": false,
   "extra_commands": [
     {
-      "command": ["my-statusline-tool", "line", "-s", "{{session_id}}"]
+      "command": [
+        "my-statusline-tool",
+        "line",
+        "-s",
+        "{{session_id}}"
+      ]
     },
     {
       "command": [
@@ -20,13 +25,5 @@
       ],
       "timeout_ms": 300
     }
-  ],
-  "notify": {
-    "enabled": true,
-    "command": [
-      "osascript",
-      "-e",
-      "display notification \"{{message}}\" with title \"Claude 한도\" subtitle \"{{window}} {{percent}}%\""
-    ]
-  }
+  ]
 }

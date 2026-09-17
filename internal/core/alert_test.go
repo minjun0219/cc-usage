@@ -28,13 +28,13 @@ func TestAlertsEdgeFiresOnce(t *testing.T) {
 
 	near := Limits{FiveHour: &store.Window{Percent: 93, ResetsAt: reset}}
 	a, dirty := Alerts(p, near, st, now)
-	if a.Level != AlertNear || !a.Fired || !a.Burst || !dirty {
+	if a.Level != AlertNear || !a.Burst || !dirty {
 		t.Fatalf("임박 엣지: %+v dirty=%v", a, dirty)
 	}
 	// 같은 틱의 두 번째 호출(statusline은 초당 여러 번 돈다)에서는 다시 쏘지 않는다.
 	a, dirty = Alerts(p, near, st, now.Add(80*time.Millisecond))
-	if a.Fired || dirty {
-		t.Fatalf("엣지는 한 번만: %+v dirty=%v", a, dirty)
+	if dirty {
+		t.Fatalf("같은 단계에서 state를 다시 쓰지 않는다: %+v dirty=%v", a, dirty)
 	}
 	if !a.Burst {
 		t.Error("burst 구간 안에서는 계속 깜빡여야 한다")
@@ -47,7 +47,7 @@ func TestAlertsEdgeFiresOnce(t *testing.T) {
 
 	// 임박 → 소진은 새 엣지다.
 	over := Limits{FiveHour: &store.Window{Percent: 100, ResetsAt: reset}}
-	if a, _ := Alerts(p, over, st, now.Add(time.Minute)); a.Level != AlertOver || !a.Fired {
+	if a, d := Alerts(p, over, st, now.Add(time.Minute)); a.Level != AlertOver || !d {
 		t.Errorf("소진 엣지: %+v", a)
 	}
 }
@@ -58,8 +58,8 @@ func TestAlertsRearmsOnReset(t *testing.T) {
 	now := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
 
 	first := Limits{FiveHour: &store.Window{Percent: 100, ResetsAt: now.Add(time.Hour)}}
-	if a, _ := Alerts(p, first, st, now); !a.Fired {
-		t.Fatal("첫 소진에서 쏴야 한다")
+	if _, d := Alerts(p, first, st, now); !d {
+		t.Fatal("첫 소진은 새 단계라 state에 기록돼야 한다")
 	}
 	// 창이 리셋돼 알림 조건이 사라지면 state를 비운다.
 	if a, dirty := Alerts(p, Limits{}, st, now.Add(time.Hour)); a.Level != AlertNone || !dirty || st.AlertKey != "" {
@@ -67,8 +67,8 @@ func TestAlertsRearmsOnReset(t *testing.T) {
 	}
 	// 다음 창에서 다시 100%면 새 엣지다 (resets_at이 달라 키가 다르다).
 	second := Limits{FiveHour: &store.Window{Percent: 100, ResetsAt: now.Add(6 * time.Hour)}}
-	if a, _ := Alerts(p, second, st, now.Add(2*time.Hour)); !a.Fired {
-		t.Error("다음 창에서 다시 쏴야 한다")
+	if _, d := Alerts(p, second, st, now.Add(2*time.Hour)); !d {
+		t.Error("다음 창은 새 키라 다시 기록돼야 한다")
 	}
 }
 
@@ -104,8 +104,8 @@ func TestAlertsSameLevelPrefersSevenDay(t *testing.T) {
 	if a.Window != "7d" {
 		t.Errorf("같은 단계면 7d가 이겨야 한다: %+v", a)
 	}
-	if !a.Fired {
-		t.Error("7d로 넘어간 것은 새 엣지라 알림이 나가야 한다")
+	if !a.Burst {
+		t.Error("7d로 넘어간 것은 새 단계라 깜빡임이 다시 시작돼야 한다")
 	}
 }
 

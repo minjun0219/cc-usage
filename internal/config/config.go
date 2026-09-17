@@ -36,48 +36,12 @@ type Config struct {
 
 	// AlertPercent is the "임박" threshold. 설정에 없으면 90, **0이면 임박 경고를
 	// 끈다**(소진 강조는 남는다). 0이 "끔" 이 되려면 "설정에 없음" 과 구분해야 해서
-	// 포인터다 — label·notify.enabled 와 같은 이유다. 읽을 때는 Alert() 를 쓴다.
+	// 포인터다. 읽을 때는 Alert() 를 쓴다.
 	AlertPercent *float64 `json:"alert_percent"`
-	// Notify fires once per 단계 when a limit is hit. nil이면 알림 없음.
-	Notify *Notify `json:"notify"`
 
 	// ExtraCommands append other tools' statusline output below cc-usage's own
 	// lines. 배(repo)별 사정을 코드가 아니라 설정에 두기 위한 창구다.
 	ExtraCommands []ExtraCommand `json:"extra_commands"`
-}
-
-// Notify runs once when a limit first reaches 임박 or 소진. Command is an argv
-// list with {{level}} · {{window}} · {{percent}} · {{message}} 치환.
-// 어떤 알림 수단을 쓸지는 설정에만 있다 — osascript든 무엇이든.
-type Notify struct {
-	// Enabled를 따로 두는 이유: 명령은 적어 둔 채 껐다 켰다 하기 위해서다.
-	// 끄자고 블록을 지우면 다시 켤 때 명령을 기억해 내야 한다.
-	Enabled *bool    `json:"enabled"`
-	Command []string `json:"command"`
-}
-
-// On reports whether notifications should fire. 블록이 있고 명령이 있으면
-// 기본은 켜짐이고, enabled를 false로 적었을 때만 꺼진다.
-func (n *Notify) On() bool {
-	if n == nil || len(n.Command) == 0 {
-		return false
-	}
-	return n.Enabled == nil || *n.Enabled
-}
-
-// NotifyState explains why notifications will or will not fire. 인자는 숨긴다 —
-// webhook URL이나 토큰을 넣는 게 흔한데 doctor 출력은 로그에 남는다.
-func (c *Config) NotifyState() string {
-	switch {
-	case c.Notify == nil:
-		return "설정 없음"
-	case len(c.Notify.Command) == 0:
-		return "command 없음"
-	case !c.Notify.On():
-		return "enabled=false (명령은 보존됨)"
-	}
-	return fmt.Sprintf("on — %s (인자 %d개, 내용은 숨김)",
-		c.Notify.Command[0], len(c.Notify.Command)-1)
 }
 
 // ExtraCommand is one external statusline segment. Command is an argv list (no

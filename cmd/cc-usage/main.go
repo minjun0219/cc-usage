@@ -113,16 +113,9 @@ func runStatusline(args []string) error {
 	}
 	alert, alertDirty := core.Alerts(p, lim, &st, now)
 	dirty = dirty || alertDirty
-
-	// 엣지를 먼저 기록하고 나서 쏜다. 기록 전에 쏘면 (a) 같은 틱의 두 번째
-	// 호출이 옛 키를 읽어 또 쏘고 (b) cache가 쓰기 불가일 때 매 렌더가 같은
-	// 조건을 새 엣지로 봐서 알림이 폭주한다.
-	stateOK := true
+	// 단계가 올라간 시각을 기록해야 다음 렌더가 burst 구간인지 안다.
 	if dirty {
-		stateOK = store.Write(store.StatePath(), &st) == nil
-	}
-	if alert.Fired && stateOK {
-		spawnNotify(p, alert) // 실패해도 statusline은 그대로 간다.
+		_ = store.Write(store.StatePath(), &st)
 	}
 
 	dir := in.Workspace.CurrentDir
@@ -164,29 +157,6 @@ func spawnRefresh() error {
 		return err
 	}
 	return cmd.Process.Release()
-}
-
-// spawnNotify fires the configured notify command detached, once per 단계.
-// 어떤 알림 수단인지는 설정에만 있다 — 코드는 argv와 치환만 안다.
-func spawnNotify(c *config.Config, a core.Alert) {
-	if !c.Notify.On() {
-		return
-	}
-	argv, ok := extra.Expand(c.Notify.Command, map[string]string{
-		"{{level}}":   a.LevelName(),
-		"{{window}}":  a.Window,
-		"{{percent}}": fmt.Sprintf("%.0f", a.Percent),
-		"{{message}}": a.Message(),
-	})
-	if !ok {
-		return
-	}
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
-	if cmd.Start() == nil {
-		_ = cmd.Process.Release()
-	}
 }
 
 func runRefresh(args []string) error {
@@ -324,7 +294,6 @@ func runDoctor(args []string) error {
 	fmt.Printf("cache dir:     %s\n", store.Dir())
 	fmt.Printf("guard:         %v\n", p.Guard)
 	fmt.Printf("alert:         임박 %.0f%% (0이면 소진만)\n", p.Alert())
-	fmt.Printf("notify:        %v\n", p.NotifyState())
 
 	tok, err := auth.Load(context.Background(), p)
 	switch {
