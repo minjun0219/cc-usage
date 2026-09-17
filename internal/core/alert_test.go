@@ -31,7 +31,8 @@ func TestAlertsEdgeFiresOnce(t *testing.T) {
 	if a.Level != AlertNear || !a.Burst || !dirty {
 		t.Fatalf("임박 엣지: %+v dirty=%v", a, dirty)
 	}
-	// 같은 틱의 두 번째 호출(statusline은 초당 여러 번 돈다)에서는 다시 쏘지 않는다.
+	// 같은 틱의 두 번째 호출(statusline은 초당 여러 번 돈다)에서는 state를 다시
+	// 쓰지 않는다 — 같은 단계면 alert_at 이 그대로여야 burst 가 6초에서 끝난다.
 	a, dirty = Alerts(p, near, st, now.Add(80*time.Millisecond))
 	if dirty {
 		t.Fatalf("같은 단계에서 state를 다시 쓰지 않는다: %+v dirty=%v", a, dirty)
