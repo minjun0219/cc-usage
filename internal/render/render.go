@@ -240,14 +240,20 @@ func (s Style) alertStyle(name string, w *store.Window, a core.Alert) string {
 	return bold + red
 }
 
-// resetText answers "언제 풀리나". 하루 안이면 시각 하나로 끝난다 — `↻14:40` 은
+// resetText answers "언제 풀리나". 오늘 안이면 시각 하나로 끝난다 — `↻14:40` 은
 // 8칸 고정이라 남은 시간이 줄어도 뒤가 밀리지 않고, ↻ 가 "여기서 다시 시작한다"를
-// 바로 전한다. 하루를 넘기면 시각만으로는 어느 날인지 모르므로 남은 시간을 낸다.
+// 바로 전한다.
+//
+// 기준은 24시간이 아니라 **달력 날짜**다. 23시간 뒤 리셋을 `↻14:00` 으로 내면
+// 오늘 14시로 읽힌다 — 7d 창은 늘 이 구간에 들어오고, 하필 사용률이 높아 화면에
+// 올라왔을 때 그렇다. 날이 바뀌면 시각만으로 어느 날인지 알 수 없으므로 남은
+// 시간을 낸다.
 func resetText(at, now time.Time) string {
-	if d := at.Sub(now); d >= 24*time.Hour {
-		return Duration(d)
+	at, n := at.Local(), now.Local()
+	if at.Year() != n.Year() || at.YearDay() != n.YearDay() {
+		return Duration(at.Sub(n))
 	}
-	return "↻" + at.Local().Format("15:04")
+	return "↻" + at.Format("15:04")
 }
 
 func statusNote(v View, s Style) string {
@@ -309,15 +315,22 @@ func creditLine(v View, s Style) string {
 	// 읽는 사람이 뒤집어 본다. 색도 한도 창과 같은 규칙으로 골라서, 90% 를 쓴 상태가
 	// 흐린 회색으로 조용히 지나가지 않게 한다.
 	amount, tone := money(cur, cv.Used), dim
-	if cv.Limit != nil && *cv.Limit > 0 {
+	hasLimit := cv.Limit != nil && *cv.Limit > 0
+	if hasLimit {
 		amount = money(cur, *cv.Limit-cv.Used)
 		tone = s.pctColor(cv.Used / *cv.Limit * 100)
 	}
 	t := s.c(dim, "💳") + " " + s.c(tone, amount)
-	// 한도는 괄호로 감싼다 — 한도 창의 "86% (3h 29m→14:40)" 과 같은 꼴이라
-	// 값 뒤의 괄호는 부가 정보라는 규칙이 줄 전체에서 한결같아진다.
-	if cv.Limit != nil {
+	// 한도는 괄호로 감싼다 — 한도 창의 "86% (↻14:40)" 과 같은 꼴이라 값 뒤의
+	// 괄호는 부가 정보라는 규칙이 줄 전체에서 한결같아진다.
+	//
+	// 한도를 모르면 남은 금액을 계산할 수 없어 쓴 금액이 나간다. 같은 서식으로
+	// 내면 남은 금액으로 읽히므로("$9.83" 이 9.83 남은 것으로 보인다) 무엇인지
+	// 밝힌다. monthly_limit 은 비공식 API 의 optional 필드라 언제든 빠질 수 있다.
+	if hasLimit {
 		t += s.c(dim, " ("+money(cur, *cv.Limit)+")")
+	} else {
+		t += s.c(dim, " 사용")
 	}
 	tail := ""
 	if cv.SpentWindow > 0 {

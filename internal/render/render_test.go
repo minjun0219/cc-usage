@@ -330,3 +330,45 @@ func TestLinesNeverEmpty(t *testing.T) {
 		t.Errorf("statusline이 통째로 비면 안 된다: %q", lines)
 	}
 }
+
+func TestCreditAmountSaysWhichDirection(t *testing.T) {
+	now := time.Now()
+	cfg := &config.Config{}
+	cfg.ApplyDefaults()
+	used, limit := 983.0, 10000.0
+	lim := core.Limits{FiveHour: &store.Window{Percent: 30}, FromStdin: true}
+	line := func(uf *store.UsageFile) string {
+		return creditLine(View{Config: cfg, Limits: lim, Usage: uf,
+			Credits: core.Credits(cfg, lim, uf, now), Now: now}, Style{})
+	}
+	withLimit := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
+		Extra: &store.Extra{Enabled: true, UsedCredits: &used, MonthlyLimit: &limit}}}
+	if got := line(withLimit); got != "💳 $90.17 ($100.00)" {
+		t.Errorf("한도가 있으면 남은 금액: %q", got)
+	}
+	// monthly_limit 은 optional 이다. 없으면 남은 금액을 낼 수 없으므로 쓴 금액이
+	// 나가는데, 같은 서식이면 남은 금액으로 읽힌다 — 무엇인지 밝혀야 한다.
+	noLimit := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
+		Extra: &store.Extra{Enabled: true, UsedCredits: &used}}}
+	if got := line(noLimit); got != "💳 $9.83 사용" {
+		t.Errorf("한도가 없으면 쓴 금액임을 밝힌다: %q", got)
+	}
+}
+
+func TestResetTextUsesCalendarDay(t *testing.T) {
+	now := time.Date(2026, 9, 17, 15, 0, 0, 0, time.Local)
+	if got := resetText(now.Add(20*time.Minute), now); got != "↻15:20" {
+		t.Errorf("같은 날이면 시각: %q", got)
+	}
+	// 23시간 뒤는 24시간 안이지만 내일이다. 시각으로 내면 오늘 14시로 읽힌다.
+	if got := resetText(now.Add(23*time.Hour), now); got != "23h" {
+		t.Errorf("날이 바뀌면 남은 시간: %q", got)
+	}
+	// 자정을 막 넘기는 경우도 마찬가지다.
+	if got := resetText(time.Date(2026, 9, 18, 0, 30, 0, 0, time.Local), now); got != "9h 30m" {
+		t.Errorf("자정 넘김: %q", got)
+	}
+	if got := resetText(now.Add(50*time.Hour), now); got != "2d 2h" {
+		t.Errorf("이틀 뒤: %q", got)
+	}
+}
