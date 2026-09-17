@@ -188,3 +188,7 @@ statusline은 stdout이 파이프라 `tput`·ioctl로 터미널 폭을 알 수 �
 - `cc-usage tui` — cmux pane용 Bubble Tea 대시보드
 - `cc-usage cmux` — `cmux set-status`로 sidebar pill 갱신
 - `--forecast` — 현재 속도로 window 소진 시각 예측
+
+## 라이선스
+
+MIT — [LICENSE](LICENSE)
