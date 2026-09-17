@@ -40,6 +40,8 @@ examples/           config, settings.json 예시
 - 창의 `limit_dollars` · `used_dollars` · `remaining_dollars`는 전부 `null`로 온다 — 금액이 아니라 `utilization`만 쓸 수 있다.
 - `resets_at`은 epoch가 아니라 ISO8601 문자열이다 (`ParseInput`이 이미 양쪽을 받는다).
 
+**`COLUMNS`·`LINES`는 실제로 온다.** 이 맥의 Ghostty 에서 `COLUMNS=127 LINES=72` 로 확인했다(`extra_commands` 로 환경을 찍어 봤다). statusline 은 stdout 이 파이프라 `tput`·ioctl 로는 폭을 못 읽지만, Claude Code 가 렌더 직전에 이 둘을 넣어 준다 — 공식 문서에도 명시돼 있다. `LINES` 는 아직 쓰지 않는다.
+
 아직 쓰지 않는 필드: `decimal_places` · `currency`("USD") · `spend_limit_reached` · `user_disabled` · `disabled_reason`. 앞 둘은 `credit_divisor`/`currency` 설정을 없앨 근거가 되고, `spend_limit_reached`는 guard가 볼 만하다.
 
 ## 미확인 사항 (실제 계정으로 검증 필요)
