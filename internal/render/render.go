@@ -337,7 +337,7 @@ func creditLine(v View, s Style) string {
 	// 내면 남은 금액으로 읽히므로("$9.83" 이 9.83 남은 것으로 보인다) 무엇인지
 	// 밝힌다. monthly_limit 은 비공식 API 의 optional 필드라 언제든 빠질 수 있다.
 	if hasLimit {
-		t += s.c(dim, " ("+money(cur, *cv.Limit)+")")
+		t += s.c(dim, " ("+moneyShort(cur, *cv.Limit)+")")
 	} else {
 		t += s.c(dim, " 사용")
 	}
@@ -380,6 +380,19 @@ func gradient(used float64) string {
 
 func money(cur string, v float64) string {
 	return fmt.Sprintf("%s%.2f", cur, math.Max(v, 0))
+}
+
+// moneyShort drops a zero fraction: $100.00 → $100, $100.50 → $100.50.
+//
+// 한도처럼 잘 변하지 않는 값에만 쓴다. 매 렌더 바뀌는 금액에서 소수점을 떼면
+// $38.40 ↔ $38 사이에서 폭이 3칸씩 오가며 뒤가 밀린다 — 리셋 표기를 시각으로
+// 고정한 것과 같은 이유다.
+func moneyShort(cur string, v float64) string {
+	v = math.Max(v, 0)
+	if v == math.Trunc(v) {
+		return fmt.Sprintf("%s%.0f", cur, v)
+	}
+	return fmt.Sprintf("%s%.2f", cur, v)
 }
 
 func shortErr(e string) string {

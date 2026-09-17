@@ -52,8 +52,9 @@ func TestLinesSpending(t *testing.T) {
 	if !strings.Contains(lines[0], "5h 0% (↻") || !strings.Contains(lines[0], "ctx 42%") {
 		t.Errorf("line1: %s", lines[0])
 	}
-	// 금액은 **남은 값**이다 — 쓴 값 $10.80 이 아니라 $50.00-$10.80.
-	if !strings.Contains(lines[1], "$39.20 ($50.00)") || !strings.Contains(lines[1], "+$0.80") || !strings.Contains(lines[1], "소진 중") {
+	// 금액은 **남은 값**이다 — 쓴 값 $10.80 이 아니라 $50-$10.80.
+	// 한도는 .00 을 떼고, 금액은 폭이 흔들리지 않게 소수점을 유지한다.
+	if !strings.Contains(lines[1], "$39.20 ($50)") || !strings.Contains(lines[1], "+$0.80") || !strings.Contains(lines[1], "소진 중") {
 		t.Errorf("line2: %s", lines[1])
 	}
 }
@@ -350,7 +351,7 @@ func TestCreditAmountSaysWhichDirection(t *testing.T) {
 	}
 	withLimit := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
 		Extra: &store.Extra{Enabled: true, UsedCredits: &used, MonthlyLimit: &limit}}}
-	if got := line(withLimit); got != "💳 $90.17 ($100.00)" {
+	if got := line(withLimit); got != "💳 $90.17 ($100)" {
 		t.Errorf("한도가 있으면 남은 금액: %q", got)
 	}
 	// monthly_limit 은 optional 이다. 없으면 남은 금액을 낼 수 없으므로 쓴 금액이
@@ -377,5 +378,19 @@ func TestResetTextUsesCalendarDay(t *testing.T) {
 	}
 	if got := resetText(now.Add(50*time.Hour), now); got != "2d 2h" {
 		t.Errorf("이틀 뒤: %q", got)
+	}
+}
+
+func TestMoneyShort(t *testing.T) {
+	// 한도는 잘 변하지 않으므로 .00 을 뗀다. 소수점이 있으면 그대로 둔다.
+	cases := map[float64]string{100: "$100", 100.5: "$100.50", 0: "$0", 33.33: "$33.33"}
+	for in, want := range cases {
+		if got := moneyShort("$", in); got != want {
+			t.Errorf("moneyShort(%v) = %q want %q", in, got, want)
+		}
+	}
+	// 금액 쪽은 폭이 흔들리지 않게 소수점을 유지한다.
+	if got := money("$", 100); got != "$100.00" {
+		t.Errorf("money(100) = %q", got)
 	}
 }
