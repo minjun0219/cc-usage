@@ -98,19 +98,61 @@ func TestNeedRefreshStdinOnlyWhenExhausted(t *testing.T) {
 
 func TestNeedRefreshAPIPolling(t *testing.T) {
 	now := time.Now()
-	p := profile(config.SourceAPI)
+	p := profile(config.SourceAPI) // poll=300s, credit_poll=300s
 	st := &store.StateFile{}
+	busy := Limits{FiveHour: &store.Window{Percent: 80}} // 여유 아님 → 기본 주기
 	uf := &store.UsageFile{Usage: &store.Usage{FetchedAt: now.Add(-time.Minute)}}
-	if NeedRefresh(p, false, Limits{}, st, uf, now) {
+	if NeedRefresh(p, false, busy, st, uf, now) {
 		t.Fatal("fresh cache should not refresh")
 	}
 	uf.Usage.FetchedAt = now.Add(-6 * time.Minute)
-	if !NeedRefresh(p, false, Limits{}, st, uf, now) {
+	if !NeedRefresh(p, false, busy, st, uf, now) {
 		t.Fatal("stale cache should refresh")
 	}
 	uf.BackoffUntil = now.Add(time.Minute)
-	if NeedRefresh(p, false, Limits{}, st, uf, now) {
+	if NeedRefresh(p, false, busy, st, uf, now) {
 		t.Fatal("backoff not respected")
+	}
+}
+
+// 한도에 여유가 있으면 간격을 늘려 API 를 아낀다. 이 API 는 rate limit 이 낮다.
+func TestPollIntervalWidensWhenIdle(t *testing.T) {
+	p := profile(config.SourceAPI)
+	for _, c := range []struct {
+		name string
+		peak float64
+		want time.Duration
+	}{
+		{"여유", 30, p.Poll() * idlePollFactor},
+		{"경계 직전", idleBelow - 1, p.Poll() * idlePollFactor},
+		{"임박 구간", idleBelow, p.Poll()},
+		{"소진", 100, p.CreditPoll()},
+	} {
+		lim := Limits{FiveHour: &store.Window{Percent: c.peak}}
+		if got := pollInterval(p, lim); got != c.want {
+			t.Errorf("%s(peak=%v): got %v want %v", c.name, c.peak, got, c.want)
+		}
+	}
+	// 두 창 중 급한 쪽을 본다.
+	lim := Limits{FiveHour: &store.Window{Percent: 10}, SevenDay: &store.Window{Percent: 95}}
+	if got := pollInterval(p, lim); got != p.Poll() {
+		t.Errorf("7d 가 급하면 그쪽을 따라야 한다: %v", got)
+	}
+}
+
+// 여유 구간에서는 같은 stale 정도라도 아직 부르지 않는다.
+func TestNeedRefreshHoldsOffWhenIdle(t *testing.T) {
+	now := time.Now()
+	p := profile(config.SourceAPI)
+	st := &store.StateFile{}
+	idle := Limits{FiveHour: &store.Window{Percent: 20}}
+	uf := &store.UsageFile{Usage: &store.Usage{FetchedAt: now.Add(-6 * time.Minute)}}
+	if NeedRefresh(p, false, idle, st, uf, now) {
+		t.Error("여유 구간에서 6분은 아직 이르다 (300s x3 = 15분)")
+	}
+	uf.Usage.FetchedAt = now.Add(-16 * time.Minute)
+	if !NeedRefresh(p, false, idle, st, uf, now) {
+		t.Error("16분이 지나면 부른다")
 	}
 }
 
@@ -150,29 +192,32 @@ func TestCreditBaselineAndSpending(t *testing.T) {
 	}
 }
 
-// API 모드는 이미 usage 를 폴링하므로 크레딧을 숨길 이유가 없다. stdin 모드는
-// 한도 전에 보여주려면 API 를 더 불러야 하므로 설정을 켰을 때만 보인다.
-func TestCreditsShownInAPIMode(t *testing.T) {
+// 기준은 모드가 아니라 "쓴 크레딧이 있는가" 다. 0 이면 "$0.00" 이 자리만 먹으므로
+// 내지 않고, 0 이 아니면 한도에 여유가 있어도 보여준다.
+func TestCreditsShownWhenNonZero(t *testing.T) {
 	now := time.Now()
-	uf := &store.UsageFile{}
-	ApplyFetch(uf, usage(1000, 30), false, "", now)
+	idle := Limits{FiveHour: &store.Window{Percent: 30}}
 
-	api := Credits(profile(config.SourceAPI), Limits{
-		FiveHour: &store.Window{Percent: 30}, FromStdin: false}, uf, now)
-	if !api.Show || !api.Enabled || api.Used != 10 {
-		t.Errorf("API 모드는 한도 전에도 크레딧을 보여야 한다: %+v", api)
+	spent := &store.UsageFile{}
+	ApplyFetch(spent, usage(1000, 30), false, "", now)
+	if cv := Credits(profile(config.SourceAPI), idle, spent, now); !cv.Show || cv.Used != 10 {
+		t.Errorf("쓴 크레딧이 있으면 한도 전에도 보여야 한다: %+v", cv)
 	}
 
-	stdin := Credits(profile(config.SourceStdin), Limits{
-		FiveHour: &store.Window{Percent: 30}, FromStdin: true}, uf, now)
-	if stdin.Show {
-		t.Errorf("stdin 모드는 설정 없이 보이면 안 된다: %+v", stdin)
+	zero := &store.UsageFile{}
+	ApplyFetch(zero, usage(0, 30), false, "", now)
+	cv := Credits(profile(config.SourceAPI), idle, zero, now)
+	if cv.Show {
+		t.Errorf("크레딧 0 이면 줄을 내지 않는다: %+v", cv)
+	}
+	if !cv.Enabled {
+		t.Errorf("0 이어도 크레딧 기능 자체는 켜져 있다: %+v", cv)
 	}
 
-	p := profile(config.SourceStdin)
-	p.AlwaysShowCredits = true
-	if on := Credits(p, Limits{FiveHour: &store.Window{Percent: 30}, FromStdin: true}, uf, now); !on.Show {
-		t.Errorf("always_show_credits 를 켜면 stdin 모드도 보여야 한다: %+v", on)
+	// 0 이라도 한도가 소진되면 기존대로 나온다 (크레딧으로 넘어가는 시점이라).
+	hit := Limits{FiveHour: &store.Window{Percent: 100}}
+	if cv := Credits(profile(config.SourceAPI), hit, zero, now); !cv.Show {
+		t.Errorf("소진이면 크레딧 0 이어도 보여야 한다: %+v", cv)
 	}
 }
 
