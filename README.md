@@ -58,6 +58,25 @@ make install            # ~/.local/bin/cc-usage
 
 ## 설정
 
+### 계정 나누기
+
+cc-usage는 **설정 파일 하나 = 계정 하나**입니다. 계정을 여럿 보려면 설정을 나누는 게 아니라 **프로세스를 나눕니다.**
+
+```sh
+# 개인 (기본)
+claude
+
+# 회사 — 설정도 cache 도 통째로 갈린다
+CLAUDE_CONFIG_DIR=~/.claude-work \
+CC_USAGE_CONFIG=~/.config/cc-usage/work.json \
+XDG_CACHE_HOME=~/.cache/cc-usage-work \
+  claude
+```
+
+**셋을 함께 주는 것이 중요합니다.** `CLAUDE_CONFIG_DIR`만 바꾸면 Claude Code 계정만 갈리고 cc-usage는 같은 설정·같은 cache를 씁니다 — 한도·크레딧 baseline·경보 상태가 두 계정 사이에 섞입니다.
+
+머신이 갈리면(회사 맥 / 집 맥) 각 머신에 설정 하나씩 두면 되고, 계정 타입이 다르면 `source`만 각자 적습니다.
+
 ### 1. `~/.config/cc-usage/config.json`
 
 [`examples/config.json`](examples/config.json) 참고. 주요 필드:
@@ -107,7 +126,11 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 
 > **빨강은 피하는 게 좋습니다.** 이 줄에서 빨강은 "여기서 멈춘다"(한도·경보)를 뜻하도록 축을 갈라 뒀습니다. 막지는 않습니다.
 
-계정은 Claude Code 자신의 `.claude.json`에 있는 `oauthAccount.emailAddress`로 알아냅니다 — **누가 계정을 바꾸든 결과가 드러나는 단일 진실 원천**이라, 전환 도구를 알 필요가 없습니다. `<config_dir>/.claude.json`을 먼저 보고 없으면 `~/.claude.json`으로 떨어집니다. 읽기만 합니다.
+계정은 Claude Code 자신의 `.claude.json`에 있는 `oauthAccount.emailAddress`로 알아냅니다 — **누가 계정을 바꾸든 결과가 드러나는 단일 진실 원천**이라, 전환 도구를 알 필요가 없습니다. 읽기만 합니다.
+
+찾는 순서는 `$CLAUDE_CONFIG_DIR/.claude.json` → `<config_dir>/.claude.json` → `~/.claude.json`입니다. 환경변수가 맨 앞인 이유는 그것이 **지금 도는 세션이 실제로 쓰는 값**이기 때문입니다.
+
+> ⚠️ **배지만 따라갑니다.** `CLAUDE_CONFIG_DIR`만 바꾸고 `XDG_CACHE_HOME`을 그대로 두면 cache를 두 계정이 공유해서 **한도·크레딧·경보 상태가 섞입니다.** 배지는 맞는데 숫자가 틀린 상태가 되니, 계정을 나눌 때는 [계정 나누기](#계정-나누기)를 따르세요.
 
 매 렌더 읽지는 않습니다. **한도 값이 움직였을 때만** 다시 읽습니다 — 계정이 바뀌면 한도도 바뀌기 때문입니다. 그래서 두 계정의 사용률이 똑같은 순간에 전환하면 그 렌더에서는 안 잡히지만, 한도는 프롬프트 한 번이면 움직이므로 곧 따라옵니다. 읽기 실패·파싱 실패·필드 없음은 모두 "표시 없음"으로 떨어집니다.
 

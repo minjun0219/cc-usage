@@ -58,3 +58,27 @@ func TestEmailUnknownIsEmpty(t *testing.T) {
 		t.Errorf("nil config: %q", got)
 	}
 }
+
+func TestEmailFollowsClaudeConfigDir(t *testing.T) {
+	// CLAUDE_CONFIG_DIR 로 연 세션은 그 계정으로 돌고 있다. 설정의 config_dir 이
+	// 뭐라고 적혀 있든 이 세션의 계정은 환경변수 쪽이다.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	write(t, filepath.Join(home, ".claude.json"), `{"oauthAccount":{"emailAddress":"default@example.com"}}`)
+	workDir := filepath.Join(home, ".claude-work")
+	write(t, filepath.Join(workDir, ".claude.json"), `{"oauthAccount":{"emailAddress":"work@example.com"}}`)
+
+	cfg := &config.Config{ConfigDir: filepath.Join(home, ".claude")} // 설정은 기본값 그대로
+	if got := Email(cfg); got != "default@example.com" {
+		t.Errorf("환경변수 없으면 기본: %q", got)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", workDir)
+	if got := Email(cfg); got != "work@example.com" {
+		t.Errorf("환경변수가 이겨야 한다: %q", got)
+	}
+	// 환경변수가 가리키는 곳에 파일이 없으면 다음 후보로 떨어진다.
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "nowhere"))
+	if got := Email(cfg); got != "default@example.com" {
+		t.Errorf("없는 경로면 폴백: %q", got)
+	}
+}
