@@ -4,9 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -31,13 +29,18 @@ func runUpdate(args []string) error {
 	if repoPath == "" {
 		return errors.New("이 바이너리에는 소스 경로가 박혀 있지 않습니다 (make install 로 설치하지 않았습니다)")
 	}
-	if fi, err := os.Stat(filepath.Join(repoPath, ".git")); err != nil || !fi.IsDir() {
-		return fmt.Errorf("소스를 찾을 수 없습니다: %s (옮겼거나 지웠습니까?)", repoPath)
+	// git 에게 물어본다. .git 이 디렉터리인지로 판단하면 linked worktree 와
+	// submodule 이 걸린다 — 거기서는 .git 이 메타데이터를 가리키는 **파일**이다.
+	if out, err := gitIn(repoPath, "rev-parse", "--git-dir"); err != nil {
+		return fmt.Errorf("git 저장소가 아닙니다: %s (옮겼거나 지웠습니까?)%s", repoPath, indent(out))
 	}
 	fmt.Printf("소스: %s\n", repoPath)
 
 	// 원격 상태를 먼저 본다. fetch 만으로는 작업 트리가 바뀌지 않는다.
-	if out, err := gitIn(repoPath, "fetch", "--quiet", "origin"); err != nil {
+	// remote 를 적지 않는다. 브랜치의 upstream 이 origin 이 아닌 저장소에서
+	// "origin" 을 박으면 upstream 이 멀쩡한데도 여기서 죽거나, 무관한 origin 을
+	// 받아 와 비교가 낡은 데이터 위에서 돈다.
+	if out, err := gitIn(repoPath, "fetch", "--quiet"); err != nil {
 		return fmt.Errorf("fetch 실패: %w%s", err, indent(out))
 	}
 	behind, ahead, ok := counts(repoPath)
@@ -60,21 +63,26 @@ func runUpdate(args []string) error {
 
 	// 커밋하지 않은 변경이 있으면 멈춘다. 그 상태로 설치하면 돌고 있는
 	// 바이너리가 하는 일의 소스가 어디에도 없게 된다.
-	if out, _ := gitIn(repoPath, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+	// status 실패를 무시하면 빈 출력이 "깨끗함" 으로 읽혀 그대로 설치까지 간다.
+	out, err := gitIn(repoPath, "status", "--porcelain")
+	if err != nil {
+		return fmt.Errorf("작업 트리 상태를 확인할 수 없습니다: %w%s", err, indent(out))
+	}
+	if strings.TrimSpace(out) != "" {
 		return fmt.Errorf("커밋하지 않은 변경이 있습니다 — 먼저 정리하세요:%s", indent(out))
 	}
-	if out, err := gitIn(repoPath, "pull", "--ff-only", "--quiet", "origin"); err != nil {
-		return fmt.Errorf("pull 실패 (갈라졌을 수 있습니다):%s", indent(out))
+	if out, err := gitIn(repoPath, "pull", "--ff-only", "--quiet"); err != nil {
+		return fmt.Errorf("pull 실패 (갈라졌을 수 있습니다): %w%s", err, indent(out))
 	}
 
 	// 게이트를 통과하지 못한 것을 설치하지 않는다.
 	fmt.Println("make test …")
 	if out, err := run(repoPath, "make", "test"); err != nil {
-		return fmt.Errorf("테스트 실패 — 설치하지 않습니다:%s", indent(out))
+		return fmt.Errorf("테스트 실패 — 설치하지 않습니다: %w%s", err, indent(out))
 	}
 	fmt.Println("make install …")
 	if out, err := run(repoPath, "make", "install"); err != nil {
-		return fmt.Errorf("설치 실패:%s", indent(out))
+		return fmt.Errorf("설치 실패: %w%s", err, indent(out))
 	}
 	now, _ := gitIn(repoPath, "describe", "--tags", "--always", "--dirty")
 	fmt.Printf("%s → %s\n", version, strings.TrimSpace(now))

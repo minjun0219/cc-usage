@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -84,5 +85,30 @@ func TestIndent(t *testing.T) {
 	}
 	if got := indent("a\nb\n"); got != "\n  a\n  b" {
 		t.Errorf("%q", got)
+	}
+}
+
+func TestRepoCheckAcceptsWorktree(t *testing.T) {
+	// linked worktree 에서는 .git 이 디렉터리가 아니라 **파일**이다. 디렉터리
+	// 여부로 판단하면 멀쩡한 소스를 "없다" 고 거부한다.
+	origin := newRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	if out, err := gitIn(origin, "worktree", "add", "-q", "--detach", wt); err != nil {
+		t.Skipf("worktree 생성 불가: %v%s", err, out)
+	}
+	t.Cleanup(func() { _, _ = gitIn(origin, "worktree", "remove", "--force", wt) })
+
+	if fi, err := os.Stat(filepath.Join(wt, ".git")); err != nil || fi.IsDir() {
+		t.Fatalf("이 테스트의 전제(.git 이 파일)가 깨졌다: %v", err)
+	}
+
+	old := repoPath
+	repoPath = wt
+	t.Cleanup(func() { repoPath = old })
+
+	err := runUpdate([]string{"--check"})
+	// upstream 이 없어 어차피 에러지만, "저장소가 아니다" 로 막히면 안 된다.
+	if err != nil && strings.Contains(err.Error(), "git 저장소가 아닙니다") {
+		t.Errorf("worktree 를 저장소가 아니라고 거부했다: %v", err)
 	}
 }
