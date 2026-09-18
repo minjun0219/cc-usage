@@ -72,8 +72,17 @@ const accountTTL = time.Minute
 //
 // 두 신호를 쓴다. 한도가 움직이면 곧바로(계정이 바뀌면 한도도 바뀐다), 그렇지
 // 않아도 accountTTL 마다 한 번. 앞은 빠르고 뒤는 상한을 준다.
-func NeedAccountCheck(lim Limits, st *store.StateFile, now time.Time) bool {
-	return st.AccountAt != lim.Key() || now.Sub(st.AccountCheckedAt) >= accountTTL
+func NeedAccountCheck(source string, lim Limits, st *store.StateFile, now time.Time) bool {
+	return st.AccountAt != AccountKey(source, lim) || now.Sub(st.AccountCheckedAt) >= accountTTL
+}
+
+// AccountKey identifies "어느 계정 파일을, 어느 한도에서 봤나".
+//
+// 경로가 키에 들어가야 하는 이유: state.json 은 XDG_CACHE_HOME 을 나누지 않으면
+// 두 세션이 공유한다. 이메일만 캐시하면 한도 키가 우연히 같을 때(저사용·0%
+// 구간은 흔하다) 한쪽이 다른 쪽의 이메일로 배지를 그린다.
+func AccountKey(source string, lim Limits) string {
+	return source + "|" + lim.Key()
 }
 
 // UseStdin reports whether limits should come from stdin for this profile.

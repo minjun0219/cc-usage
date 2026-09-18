@@ -114,8 +114,10 @@ func runStatusline(args []string) error {
 	}
 	// 로그인된 계정은 한도가 움직였을 때만 다시 읽는다 — 매 렌더 읽지 않는
 	// 이유와 놓치는 경우는 core.NeedAccountCheck 에 적혀 있다.
-	if core.NeedAccountCheck(lim, &st, now) {
-		st.AccountEmail, st.AccountAt, st.AccountCheckedAt = account.Email(p), lim.Key(), now
+	// Source 는 파일을 읽지 않는다 — 읽는 것은 아래 Email 뿐이고, 그것도
+	// 판정이 통과했을 때만이다.
+	if src := account.Source(p); core.NeedAccountCheck(src, lim, &st, now) {
+		st.AccountEmail, st.AccountAt, st.AccountCheckedAt = account.Email(p), core.AccountKey(src, lim), now
 		dirty = true
 	}
 	var badge *config.Badge

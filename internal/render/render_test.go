@@ -513,3 +513,18 @@ func TestBadgeIsPrefixNotSegment(t *testing.T) {
 		t.Errorf("배지 폭이 반영되지 않는다")
 	}
 }
+
+func TestBadgeSurvivesEmptyRow(t *testing.T) {
+	// stdin 도 cache 도 빈 렌더가 정보가 가장 적은 순간이다. 하필 거기서
+	// "여기는 평소 자리가 아니다" 신호가 사라지면 안 된다.
+	now := time.Now()
+	cfg := &config.Config{}
+	cfg.ApplyDefaults()
+	uf := &store.UsageFile{}
+	lim := core.Limits{FromStdin: true}
+	lines := Lines(View{Config: cfg, Badge: &config.Badge{Emoji: "🏢"},
+		Limits: lim, Usage: uf, Credits: core.Credits(cfg, lim, uf, now), Now: now}, Style{})
+	if len(lines) != 1 || lines[0] != "🏢" {
+		t.Errorf("배지만 남아야 한다: %q", lines)
+	}
+}

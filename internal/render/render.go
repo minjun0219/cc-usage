@@ -172,8 +172,16 @@ func Lines(v View, s Style) []string {
 	row := strings.Join(parts, sep)
 	// 배지는 세그먼트가 아니라 **머리표**다 — 구분자를 붙이지 않는다. 폭 계산
 	// 전에 붙여야 크레딧이 내려갈지 판단에 배지 폭까지 들어간다.
-	if b := badgeText(v.Badge, s); b != "" && row != "" {
-		row = b + " " + row
+	//
+	// 나머지가 다 비어도 배지는 낸다. stdin 도 cache 도 빈 렌더가 정보가 가장
+	// 적은 순간인데, 하필 거기서 "여기는 평소 자리가 아니다" 신호가 사라지면
+	// 안 된다.
+	if b := badgeText(v.Badge, s); b != "" {
+		if row == "" {
+			row = b
+		} else {
+			row = b + " " + row
+		}
 	}
 	cl := creditLine(v, s)
 	standalone := cl != "" && s.creditStandalone(v, row, cl, sep)

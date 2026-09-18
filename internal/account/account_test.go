@@ -108,3 +108,43 @@ func TestEmailFollowsClaudeConfigDir(t *testing.T) {
 		t.Errorf("없는 경로면 배지 없음이어야 한다 (다른 계정으로 새면 안 됨): %q", got)
 	}
 }
+
+func TestClaudeConfigDirIsExclusive(t *testing.T) {
+	// CLAUDE_CONFIG_DIR 가 걸려 있는데 그쪽 파일이 있어도 oauthAccount 가 비어
+	// 있는 경우(API key 인증 · 갓 만든 디렉터리 · 원자적 재작성 중). 다른 후보로
+	// 새면 **다른 계정**의 이메일을 집어 온다.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	personal := filepath.Join(home, ".claude-personal")
+	work := filepath.Join(home, ".claude-work")
+	write(t, filepath.Join(home, ".claude.json"), `{"oauthAccount":{"emailAddress":"default@example.com"}}`)
+	write(t, filepath.Join(personal, ".claude.json"), `{"oauthAccount":{"emailAddress":"personal@example.com"}}`)
+	write(t, filepath.Join(work, ".claude.json"), `{"someOtherKey":1}`) // oauthAccount 없음
+
+	t.Setenv("CLAUDE_CONFIG_DIR", work)
+	if got := Email(&config.Config{ConfigDir: personal}); got != "" {
+		t.Errorf("config_dir 프로필로 새면 안 된다: %q", got)
+	}
+	// 환경변수가 걸리면 후보는 그것 하나뿐이다.
+	if p := paths(&config.Config{ConfigDir: personal}); len(p) != 1 {
+		t.Errorf("후보가 %d개 (1개여야 한다): %v", len(p), p)
+	}
+}
+
+func TestSourceDoesNotRead(t *testing.T) {
+	// Source 는 매 렌더 불린다 — 파일을 읽으면 캐시를 둔 의미가 없다.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := &config.Config{ConfigDir: filepath.Join(home, ".claude")}
+	// 파일이 하나도 없어도 경로는 나온다 (읽지 않으니까). 실제로 읽히는 파일이
+	// 아니라 **어느 자리를 보고 있나**를 나타내는 식별자다 — 캐시가 갈리는 데
+	// 필요한 것은 그것뿐이다.
+	if got := Source(cfg); got != filepath.Join(home, ".claude", ".claude.json") {
+		t.Errorf("Source: %q", got)
+	}
+	// 보는 자리가 바뀌면 Source 도 바뀐다 — 캐시 키가 갈리는 근거다.
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude-work"))
+	if got := Source(cfg); got != filepath.Join(home, ".claude-work", ".claude.json") {
+		t.Errorf("Source(env): %q", got)
+	}
+}

@@ -309,22 +309,23 @@ func TestPollIntervalNeverOutlastsStale(t *testing.T) {
 
 func TestAccountCheckFollowsLimits(t *testing.T) {
 	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	const src = "/home/u/.claude.json"
 	st := &store.StateFile{}
 	a := Limits{FiveHour: &store.Window{Percent: 40}, SevenDay: &store.Window{Percent: 20}}
 
 	// 첫 렌더는 저장된 키가 비어 있으니 반드시 확인한다.
-	if !NeedAccountCheck(a, st, now) {
+	if !NeedAccountCheck(src, a, st, now) {
 		t.Fatal("첫 렌더에서 확인해야 한다")
 	}
-	st.AccountAt, st.AccountCheckedAt = a.Key(), now
+	st.AccountAt, st.AccountCheckedAt = AccountKey(src, a), now
 
 	// 한도가 그대로고 TTL 안이면 파일을 읽지 않는다 — 여기서 성능을 산다.
-	if NeedAccountCheck(a, st, now.Add(time.Second)) {
+	if NeedAccountCheck(src, a, st, now.Add(time.Second)) {
 		t.Error("한도가 같고 TTL 안이면 다시 읽지 않는다")
 	}
 	// 값이 움직이면 계정이 바뀌었을 수 있으니 곧바로 다시 읽는다.
 	b := Limits{FiveHour: &store.Window{Percent: 41}, SevenDay: &store.Window{Percent: 20}}
-	if !NeedAccountCheck(b, st, now.Add(time.Second)) {
+	if !NeedAccountCheck(src, b, st, now.Add(time.Second)) {
 		t.Error("한도가 바뀌면 다시 읽는다")
 	}
 	// 창이 하나도 없어도 키가 비지 않아야 첫 렌더 판정이 성립한다.
@@ -332,7 +333,7 @@ func TestAccountCheckFollowsLimits(t *testing.T) {
 		t.Error("빈 Limits 의 키가 비면 첫 렌더를 구분할 수 없다")
 	}
 	// 창이 사라지는 것도 변화다 (stdin 이 끊긴 경우 등).
-	if !NeedAccountCheck(Limits{}, st, now) {
+	if !NeedAccountCheck(src, Limits{}, st, now) {
 		t.Error("창이 사라진 것도 변화로 본다")
 	}
 }
@@ -348,12 +349,35 @@ func TestAccountCheckHasCeiling(t *testing.T) {
 	if low.Key() != same.Key() {
 		t.Fatal("이 테스트의 전제(반올림 충돌)가 깨졌다")
 	}
-	st := &store.StateFile{AccountAt: low.Key(), AccountCheckedAt: now}
+	const src = "/home/u/.claude.json"
+	st := &store.StateFile{AccountAt: AccountKey(src, low), AccountCheckedAt: now}
 
-	if NeedAccountCheck(same, st, now.Add(30*time.Second)) {
+	if NeedAccountCheck(src, same, st, now.Add(30*time.Second)) {
 		t.Error("TTL 안에서는 읽지 않는다")
 	}
-	if !NeedAccountCheck(same, st, now.Add(accountTTL)) {
+	if !NeedAccountCheck(src, same, st, now.Add(accountTTL)) {
 		t.Error("TTL 을 넘기면 한도가 그대로여도 읽는다")
+	}
+}
+
+func TestAccountKeyIncludesSource(t *testing.T) {
+	// state.json 은 XDG_CACHE_HOME 을 나누지 않으면 두 세션이 공유한다.
+	// 이메일만 캐시하면 한도 키가 우연히 같을 때(저사용·0% 구간은 흔하다)
+	// 한쪽이 다른 쪽의 이메일로 배지를 그린다 — 이 기능이 막으려던 바로 그
+	// "조용히 틀린 배지" 다. 보고 있는 계정 파일이 다르면 키도 달라야 한다.
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	lim := Limits{FiveHour: &store.Window{Percent: 0}} // 두 계정이 흔히 겹치는 구간
+	work := "/home/u/.claude-work/.claude.json"
+	personal := "/home/u/.claude.json"
+
+	// 회사 세션이 먼저 캐시를 채운다.
+	st := &store.StateFile{AccountEmail: "work@example.com",
+		AccountAt: AccountKey(work, lim), AccountCheckedAt: now}
+	// 같은 state.json 을 보는 개인 세션은 그 값을 그대로 쓰면 안 된다.
+	if !NeedAccountCheck(personal, lim, st, now) {
+		t.Error("보는 계정 파일이 다르면 캐시를 재사용하면 안 된다")
+	}
+	if NeedAccountCheck(work, lim, st, now) {
+		t.Error("같은 계정 파일이면 캐시를 쓴다")
 	}
 }

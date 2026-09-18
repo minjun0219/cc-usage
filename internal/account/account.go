@@ -46,6 +46,20 @@ func Email(c *config.Config) string {
 	return ""
 }
 
+// Source is which account slot this session is looking at. **파일을 읽지 않는다**
+// — 경로만 조립하므로 매 렌더 불러도 공짜다.
+//
+// 캐시 키에 들어간다. 이메일만 캐시하면, cache 를 나누지 않은 설치
+// (CLAUDE_CONFIG_DIR 만 나누고 XDG_CACHE_HOME 은 공유)에서 두 세션이 같은
+// state.json 을 쓰면서 서로의 이메일을 읽어 간다 — 이 기능이 막으려던 "조용히
+// 틀린 배지" 가 캐시 쪽에서 다시 생긴다.
+func Source(c *config.Config) string {
+	if p := paths(c); len(p) > 0 {
+		return p[0]
+	}
+	return ""
+}
+
 // paths is where .claude.json can live, most specific first.
 //
 // $CLAUDE_CONFIG_DIR 가 맨 앞이다 — 그것이 **지금 도는 세션이 실제로 쓰는 값**
@@ -63,10 +77,14 @@ func Email(c *config.Config) string {
 // 계정을 나누는 문서화된 방법은 CC_USAGE_CONFIG 와 XDG_CACHE_HOME 을 함께
 // 나누는 것이다.
 func paths(c *config.Config) []string {
-	var out []string
+	// CLAUDE_CONFIG_DIR 가 걸려 있으면 **그것만** 본다. 다른 후보를 남겨 두면,
+	// 그 디렉터리의 .claude.json 이 없거나 oauthAccount 가 비었을 때(API key
+	// 인증 · 갓 만든 디렉터리 · 원자적 재작성 중) 다른 계정의 파일로 새어
+	// 들어간다. 못 읽으면 배지를 내지 않는 쪽이 맞다.
 	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
-		out = append(out, filepath.Join(config.Expand(d), ".claude.json"))
+		return []string{filepath.Join(config.Expand(d), ".claude.json")}
 	}
+	var out []string
 	if c != nil && c.ConfigDir != "" {
 		out = append(out, filepath.Join(c.ConfigDir, ".claude.json"))
 	}
@@ -80,9 +98,6 @@ func paths(c *config.Config) []string {
 	// 그 경우에는 배지를 내지 않는다. 틀린 배지보다 배지 없음이 낫다.
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return out
-	}
-	if os.Getenv("CLAUDE_CONFIG_DIR") != "" {
 		return out
 	}
 	if c != nil && c.ConfigDir != "" && filepath.Clean(c.ConfigDir) != filepath.Join(home, ".claude") {
