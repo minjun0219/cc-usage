@@ -306,3 +306,32 @@ func TestPollIntervalNeverOutlastsStale(t *testing.T) {
 		}
 	}
 }
+
+func TestAccountCheckFollowsLimits(t *testing.T) {
+	st := &store.StateFile{}
+	a := Limits{FiveHour: &store.Window{Percent: 40}, SevenDay: &store.Window{Percent: 20}}
+
+	// 첫 렌더는 저장된 키가 비어 있으니 반드시 확인한다.
+	if !NeedAccountCheck(a, st) {
+		t.Fatal("첫 렌더에서 확인해야 한다")
+	}
+	st.AccountAt = a.Key()
+
+	// 한도가 그대로면 파일을 읽지 않는다 — 이게 성능을 사는 지점이다.
+	if NeedAccountCheck(a, st) {
+		t.Error("한도가 같으면 다시 읽지 않는다")
+	}
+	// 값이 움직이면 계정이 바뀌었을 수 있으니 다시 읽는다.
+	b := Limits{FiveHour: &store.Window{Percent: 41}, SevenDay: &store.Window{Percent: 20}}
+	if !NeedAccountCheck(b, st) {
+		t.Error("한도가 바뀌면 다시 읽는다")
+	}
+	// 창이 하나도 없어도 키가 비지 않아야 첫 렌더 판정이 성립한다.
+	if k := (Limits{}).Key(); k == "" {
+		t.Error("빈 Limits 의 키가 비면 첫 렌더를 구분할 수 없다")
+	}
+	// 창이 사라지는 것도 변화다 (stdin 이 끊긴 경우 등).
+	if !NeedAccountCheck(Limits{}, st) {
+		t.Error("창이 사라진 것도 변화로 본다")
+	}
+}

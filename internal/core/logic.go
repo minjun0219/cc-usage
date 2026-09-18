@@ -2,6 +2,7 @@
 package core
 
 import (
+	"fmt"
 	"time"
 
 	"cc-usage/internal/config"
@@ -36,6 +37,34 @@ func (l Limits) Peak() float64 {
 		}
 	}
 	return peak
+}
+
+// Key is a snapshot of the current limit values.
+//
+// 계정이 바뀌면 한도도 바뀐다. 그래서 이 키가 달라졌다는 것은 "로그인된 계정을
+// 다시 확인해 볼 만하다" 는 뜻이다. 창이 하나도 없어도 빈 문자열이 되지 않게
+// 해서, 첫 렌더(저장된 키가 "")가 항상 확인을 한 번 거치게 한다.
+func (l Limits) Key() string {
+	f, s := "-", "-"
+	if l.FiveHour != nil {
+		f = fmt.Sprintf("%.0f", l.FiveHour.Percent)
+	}
+	if l.SevenDay != nil {
+		s = fmt.Sprintf("%.0f", l.SevenDay.Percent)
+	}
+	return f + "/" + s
+}
+
+// NeedAccountCheck reports whether the logged-in account should be re-read.
+//
+// 매 렌더 읽지 않는 이유는 성능이다 — .claude.json 은 프로젝트가 쌓일수록
+// 커지고, 읽는 비용이 파일 크기에 비례한다. 대신 한도가 움직였을 때만 읽는다.
+//
+// 놓치는 경우가 있다: 두 계정의 사용률이 똑같은 순간에 전환하면 그 렌더에서는
+// 안 잡힌다. 다만 한도는 프롬프트 한 번이면 움직이므로 곧 따라온다. 적극적으로
+// 감지하는 대신 그 지연을 받아들인 것이다.
+func NeedAccountCheck(lim Limits, st *store.StateFile) bool {
+	return st.AccountAt != lim.Key()
 }
 
 // UseStdin reports whether limits should come from stdin for this profile.

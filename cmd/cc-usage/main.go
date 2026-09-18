@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"cc-usage/internal/account"
 	"cc-usage/internal/api"
 	"cc-usage/internal/auth"
 	"cc-usage/internal/config"
@@ -111,6 +112,17 @@ func runStatusline(args []string) error {
 		st.SpawnedAt = now
 		dirty = true
 	}
+	// 로그인된 계정은 한도가 움직였을 때만 다시 읽는다 — 매 렌더 읽지 않는
+	// 이유와 놓치는 경우는 core.NeedAccountCheck 에 적혀 있다.
+	if core.NeedAccountCheck(lim, &st) {
+		st.AccountEmail, st.AccountAt = account.Email(p), lim.Key()
+		dirty = true
+	}
+	var badge *config.Badge
+	if b, ok := p.Badges[st.AccountEmail]; ok && st.AccountEmail != "" {
+		badge = &b
+	}
+
 	alert, alertDirty := core.Alerts(p, lim, &st, now)
 	dirty = dirty || alertDirty
 	// 단계가 올라간 시각을 기록해야 다음 렌더가 burst 구간인지 안다.
@@ -128,6 +140,7 @@ func runStatusline(args []string) error {
 		Config:     p,
 		Dir:        dir,
 		Git:        gs,
+		Badge:      badge,
 		Model:      in.Model.DisplayName,
 		ContextPct: in.ContextWindow.UsedPercentage,
 		Limits:     lim,

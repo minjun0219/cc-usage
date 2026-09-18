@@ -39,9 +39,30 @@ type Config struct {
 	// 포인터다. 읽을 때는 Alert() 를 쓴다.
 	AlertPercent *float64 `json:"alert_percent"`
 
+	// Badges marks the statusline by **which account is logged in**, keyed by
+	// email. 목록에 없는 계정은 아무것도 붙지 않는다 — 평소 쓰는 계정을 안 적으면
+	// 표시가 뜨는 것 자체가 "여기는 평소 자리가 아니다" 라는 신호가 된다.
+	//
+	// 계정 전환은 지원하지 않는다. 지금 로그인된 계정을 알아보게만 한다.
+	Badges map[string]Badge `json:"badges"`
+
 	// ExtraCommands append other tools' statusline output below cc-usage's own
 	// lines. 배(repo)별 사정을 코드가 아니라 설정에 두기 위한 창구다.
 	ExtraCommands []ExtraCommand `json:"extra_commands"`
+}
+
+// Badge is how one account marks the statusline.
+//
+// Emoji 가 있으면 그것만 쓴다 — 이모지는 제 색을 가지고 있어 Color 를 볼 이유가
+// 없다. 없으면 Glyph(기본 ●)를 Color 로 칠한다.
+//
+// 빨강 계열은 피하는 게 좋다. 이 줄에서 빨강은 "여기서 멈춘다"(한도·경보)를
+// 뜻하도록 축을 갈라 뒀는데, 배지가 빨강이면 같은 말을 두 가지로 쓰게 된다.
+// 막지는 않는다 — 고르는 쪽이 알고 고르면 될 일이다.
+type Badge struct {
+	Emoji string `json:"emoji"`
+	Glyph string `json:"glyph"`
+	Color string `json:"color"`
 }
 
 // ExtraCommand is one external statusline segment. Command is an argv list (no

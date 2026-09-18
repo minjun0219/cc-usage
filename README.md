@@ -74,6 +74,7 @@ make install            # ~/.local/bin/cc-usage
 | `credit_divisor` | 100 | `used_credits` 단위 환산 (cent 가정) |
 | `currency` | `$` | 표시 통화 기호 |
 | `always_show_credits` | false | 크레딧이 0이어도 줄 표시. stdin 모드에서는 한도 전에도 API를 부르게 됩니다 |
+| `badges` | – | 로그인된 계정을 이메일로 알아보는 표시 (아래 참고) |
 | `alert_percent` | 90 | 이 %를 넘으면 "임박" 강조. **`0`이면 임박 경고를 끄고** 소진(100%)만 강조 |
 | `guard` | false | `cc-usage guard` 활성화 |
 | `extra_commands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |
@@ -87,6 +88,30 @@ CC_USAGE_CONFIG=~/.config/cc-usage/work.json \
 XDG_CACHE_HOME=~/.cache/cc-usage-work \
   cc-usage statusline
 ```
+
+#### `badges` — 어느 계정으로 돌고 있는지
+
+계정마다 상태 줄 앞에 작은 표시를 붙입니다. **키는 이메일**입니다.
+
+```json
+"badges": {
+  "work@example.com": { "emoji": "🏢" },
+  "me@example.com":   { "color": "blue", "glyph": "◆" }
+}
+```
+
+- `emoji`가 있으면 그것만 씁니다 (이모지는 제 색을 가지므로 `color`를 보지 않습니다)
+- 없으면 `glyph`(기본 `●`)를 `color`로 칠합니다
+- `color`는 이름(`blue`·`brightblue`·`cyan`·`green`·`yellow`·`magenta`·`red`·`gray`·`white`) 또는 256 인덱스(`"33"`)
+- **목록에 없는 계정은 아무것도 붙지 않습니다.** 평소 쓰는 계정을 안 적어두면, 표시가 뜨는 것 자체가 "여기는 평소 자리가 아니다"라는 신호가 됩니다
+
+> **빨강은 피하는 게 좋습니다.** 이 줄에서 빨강은 "여기서 멈춘다"(한도·경보)를 뜻하도록 축을 갈라 뒀습니다. 막지는 않습니다.
+
+계정은 Claude Code 자신의 `.claude.json`에 있는 `oauthAccount.emailAddress`로 알아냅니다 — **누가 계정을 바꾸든 결과가 드러나는 단일 진실 원천**이라, 전환 도구를 알 필요가 없습니다. `<config_dir>/.claude.json`을 먼저 보고 없으면 `~/.claude.json`으로 떨어집니다. 읽기만 합니다.
+
+매 렌더 읽지는 않습니다. **한도 값이 움직였을 때만** 다시 읽습니다 — 계정이 바뀌면 한도도 바뀌기 때문입니다. 그래서 두 계정의 사용률이 똑같은 순간에 전환하면 그 렌더에서는 안 잡히지만, 한도는 프롬프트 한 번이면 움직이므로 곧 따라옵니다. 읽기 실패·파싱 실패·필드 없음은 모두 "표시 없음"으로 떨어집니다.
+
+**cc-usage는 계정을 바꾸지 않습니다.** 지금 로그인된 계정을 알아보게만 합니다.
 
 #### `alert_percent` — 한도 임박 강조
 

@@ -116,7 +116,9 @@ func cubeAxis(v int) int {
 }
 
 func (s Style) c(code, text string) string {
-	if !s.Color || text == "" {
+	// code 가 비면 리셋만 덩그러니 붙는다 — 눈에는 안 보여도 쓰레기 출력이다.
+	// 색을 못 고른 호출자(설정 오타 등)가 이 자리로 온다.
+	if !s.Color || text == "" || code == "" {
 		return text
 	}
 	return code + text + reset
@@ -124,8 +126,9 @@ func (s Style) c(code, text string) string {
 
 type View struct {
 	Config     *config.Config
-	Dir        string      // workspace.current_dir (빈 값이면 경로 줄 생략)
-	Git        *git.Status // nil이면 git repo가 아니거나 조회 실패 — 세그먼트 생략
+	Dir        string        // workspace.current_dir (빈 값이면 경로 줄 생략)
+	Git        *git.Status   // nil이면 git repo가 아니거나 조회 실패 — 세그먼트 생략
+	Badge      *config.Badge // nil이면 표시 없음 (목록에 없는 계정)
 	Model      string
 	ContextPct *float64
 	Limits     core.Limits
@@ -167,6 +170,11 @@ func Lines(v View, s Style) []string {
 	// 곧 프롬프트가 밀리는 양이다. 내려야 할 때만 줄을 따로 쓴다.
 	sep := s.c(dim, " · ")
 	row := strings.Join(parts, sep)
+	// 배지는 세그먼트가 아니라 **머리표**다 — 구분자를 붙이지 않는다. 폭 계산
+	// 전에 붙여야 크레딧이 내려갈지 판단에 배지 폭까지 들어간다.
+	if b := badgeText(v.Badge, s); b != "" && row != "" {
+		row = b + " " + row
+	}
 	cl := creditLine(v, s)
 	standalone := cl != "" && s.creditStandalone(v, row, cl, sep)
 	if cl != "" && !standalone {
@@ -188,6 +196,52 @@ func Lines(v View, s Style) []string {
 		lines = append(lines, s.c(dim, "[cc-usage]"))
 	}
 	return lines
+}
+
+// badgeText marks which account is logged in. 이모지가 있으면 그것만 쓰고,
+// 없으면 글리프(기본 ●)를 색으로 칠한다.
+func badgeText(b *config.Badge, s Style) string {
+	if b == nil {
+		return ""
+	}
+	if b.Emoji != "" {
+		return b.Emoji
+	}
+	g := b.Glyph
+	if g == "" {
+		g = "●"
+	}
+	return s.c(badgeColor(b.Color), g)
+}
+
+// badgeColor takes a name or a 256 index. 이름은 읽기 쉽고 인덱스는 정확해서
+// 둘 다 받는다. 모르는 값이면 색을 쓰지 않는다 — 설정 오타로 글리프가 사라지는
+// 것보다 색 없이 뜨는 편이 낫다.
+func badgeColor(v string) string {
+	if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
+		return fmt.Sprintf("\033[38;5;%dm", n)
+	}
+	switch strings.ToLower(v) {
+	case "blue":
+		return "\033[34m"
+	case "brightblue":
+		return "\033[94m"
+	case "cyan":
+		return "\033[36m"
+	case "green":
+		return "\033[32m"
+	case "yellow":
+		return "\033[33m"
+	case "magenta":
+		return "\033[35m"
+	case "red":
+		return "\033[31m"
+	case "gray", "grey":
+		return dim
+	case "white":
+		return "\033[97m"
+	}
+	return ""
 }
 
 func dirLine(v View, s Style) string {
