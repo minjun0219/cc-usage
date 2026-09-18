@@ -597,3 +597,20 @@ func TestEmojiWidths(t *testing.T) {
 		}
 	}
 }
+
+func TestTextPresentationSymbolsStayOneColumn(t *testing.T) {
+	// 이모지 블록 안에도 텍스트 표현이 기본인 글자가 있다. 통째로 2칸으로 세면
+	// 크레딧이 불필요하게 한 줄 내려간다. VS16 이 붙으면 그때 2칸이 된다.
+	for _, c := range []struct {
+		s    string
+		want int
+	}{
+		{"🛠", 1}, {"🛠️", 2}, // U+1F6E0 — VS16 이 승격시킨다
+		{"🛰", 1}, {"🛰️", 2}, // U+1F6F0
+		{"🚀", 2}, {"🛬", 2}, // 원래 Emoji_Presentation
+	} {
+		if got := displayWidth(c.s); got != c.want {
+			t.Errorf("%s (U+%04X): %d칸 (%d여야 함)", c.s, []rune(c.s)[0], got, c.want)
+		}
+	}
+}

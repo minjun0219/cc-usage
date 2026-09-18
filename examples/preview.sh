@@ -29,12 +29,13 @@ cat > "$DIR/config.json" <<JSON
 JSON
 
 # 배지 없는 설정 — 같은 상태를 배지 유무로 비교하려고 따로 둔다.
-sed 's/,$/,/; s/"badges":.*$/}/' "$DIR/config.json" > "$DIR/config-nobadge.json"
-python3 - "$DIR/config.json" "$DIR/config-nobadge.json" <<'PY2'
-import json, sys
-d = json.load(open(sys.argv[1])); d.pop("badges", None)
-json.dump(d, open(sys.argv[2], "w"))
-PY2
+# 위 설정에서 badges 만 뺀 것을 그대로 적는다. 파생시키지 않는 이유는 의존성이다
+# — Go 와 make 만 있는 머신에서 make preview 가 돌아야 한다.
+cat > "$DIR/config-nobadge.json" <<JSON
+{"source":"stdin", "alert_percent":90,
+ "keychain_service":"cc-usage-preview-absent",
+ "credentials_file":"$DIR/absent.json"}
+JSON
 
 NOW=$(date +%s)
 mkdir -p "$XDG_CACHE_HOME/cc-usage"
