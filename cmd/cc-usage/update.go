@@ -4,7 +4,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -80,13 +82,42 @@ func runUpdate(args []string) error {
 	if out, err := run(repoPath, "make", "test"); err != nil {
 		return fmt.Errorf("테스트 실패 — 설치하지 않습니다: %w%s", err, indent(out))
 	}
-	fmt.Println("make install …")
-	if out, err := run(repoPath, "make", "install"); err != nil {
-		return fmt.Errorf("설치 실패: %w%s", err, indent(out))
+	fmt.Println("make build …")
+	if out, err := run(repoPath, "make", "build"); err != nil {
+		return fmt.Errorf("빌드 실패: %w%s", err, indent(out))
+	}
+	exe, err := installTarget()
+	if err != nil {
+		return err
+	}
+	if out, err := run(repoPath, "install", "-m", "0755", filepath.Join(repoPath, "bin", "cc-usage"), exe); err != nil {
+		return fmt.Errorf("설치 실패 (%s): %w%s", exe, err, indent(out))
 	}
 	now, _ := gitIn(repoPath, "describe", "--tags", "--always", "--dirty")
-	fmt.Printf("%s → %s\n", version, strings.TrimSpace(now))
+	fmt.Printf("%s → %s  (%s)\n", version, strings.TrimSpace(now), exe)
 	return nil
+}
+
+// installTarget is the path this update must overwrite — 지금 돌고 있는 바로 그
+// 파일이다.
+//
+// `make install` 을 부르지 않는 이유: 그러면 Makefile 의 기본 PREFIX 로 간다.
+// 기본이 아닌 자리에 설치해 뒀거나 바이너리를 옮겼으면 **엉뚱한 파일을 갱신하고
+// 성공이라 보고한다** — 돌고 있는 바이너리는 옛 버전 그대로다. Makefile 의
+// install 타깃이 하는 일은 build + install -m 0755 가 전부라, 자리를 직접
+// 정해 주는 것으로 잃는 게 없다.
+//
+// 심링크는 실체까지 따라간다. `~/.local/bin/cc-usage` 가 링크면 링크를 파일로
+// 덮어써 버리는 대신 가리키는 실체를 갱신해야 링크가 살아남는다.
+func installTarget() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("실행 파일 경로를 알 수 없습니다: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	return exe, nil
 }
 
 // counts returns how far HEAD is behind and ahead of its upstream.
