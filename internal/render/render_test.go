@@ -528,3 +528,89 @@ func TestBadgeSurvivesEmptyRow(t *testing.T) {
 		t.Errorf("배지만 남아야 한다: %q", lines)
 	}
 }
+
+func TestBadgeNeverLooksLikeSegment(t *testing.T) {
+	// 배지는 머리표라 구분자를 붙이지 않는다. 나머지가 다 비고 크레딧만 남는
+	// 렌더에서 "🏢 · 💳 …" 가 되면 배지가 세그먼트처럼 보인다.
+	now := time.Now()
+	cfg := &config.Config{}
+	cfg.ApplyDefaults()
+	used, limit := 1230.0, 10000.0
+	uf := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
+		Extra: &store.Extra{Enabled: true, UsedCredits: &used, MonthlyLimit: &limit}}}
+	lim := core.Limits{FromStdin: true} // 모델·ctx·한도 전부 없음
+	lines := Lines(View{Config: cfg, Badge: &config.Badge{Emoji: "🏢"},
+		Limits: lim, Usage: uf, Credits: core.Credits(cfg, lim, uf, now), Now: now}, Style{})
+	if strings.Contains(lines[0], "🏢 · ") {
+		t.Errorf("배지 뒤에 구분자가 붙었다: %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[0], "🏢 💳") {
+		t.Errorf("배지 + 공백 + 크레딧: %q", lines[0])
+	}
+}
+
+func TestBadgeWidthCountsTowardCreditPlacement(t *testing.T) {
+	// 배지를 마지막에 붙이더라도 줄에는 들어가는 폭이다. 폭 판단에서 빠지면
+	// 경계 근처에서 크레딧이 붙을지 내려갈지가 한 칸씩 어긋난다.
+	now := time.Now()
+	cfg := &config.Config{}
+	cfg.ApplyDefaults()
+	used, limit := 1230.0, 10000.0
+	uf := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
+		Extra: &store.Extra{Enabled: true, UsedCredits: &used, MonthlyLimit: &limit}}}
+	lim := core.Limits{FiveHour: &store.Window{Percent: 30}, FromStdin: true}
+	view := func(b *config.Badge) View {
+		return View{Config: cfg, Badge: b, Model: "Opus 5", Limits: lim, Usage: uf,
+			Credits: core.Credits(cfg, lim, uf, now), Now: now}
+	}
+	// 배지 없이는 딱 붙고, 배지 폭(2+1)이 더해지면 넘치는 폭을 고른다.
+	plain := Lines(view(nil), Style{})
+	w := displayWidth(plain[0])
+	s := Style{Width: w + rightMargin + 1} // 배지 없으면 들어가고 있으면 넘친다
+	if got := Lines(view(nil), s); len(got) != 1 {
+		t.Fatalf("배지 없을 때는 한 줄이어야 한다: %q", got)
+	}
+	if got := Lines(view(&config.Badge{Emoji: "🏢"}), s); len(got) != 2 {
+		t.Errorf("배지 폭이 반영되면 크레딧이 내려가야 한다: %q", got)
+	}
+}
+
+func TestEmojiWidths(t *testing.T) {
+	// 배지가 임의의 사용자 이모지를 이 계산에 태운다. 흔한 구간이 빠지면
+	// 폭이 1칸씩 틀린다.
+	for _, e := range []string{"💳", "🏢", "🚀", "🟠", "🧠", "🪄", "⚡", "✅", "⌛"} {
+		if got := displayWidth(e); got != 2 {
+			t.Errorf("%s (U+%04X): %d칸 (2여야 함)", e, []rune(e)[0], got)
+		}
+	}
+	// variation selector 와 ZWJ 는 자리를 먹지 않는다. 1칸으로 세면 이모지
+	// 하나가 3칸(⚡️)이나 8칸(가족)으로 계산돼 크레딧 배치가 어긋난다.
+	for _, e := range []string{"⚡️", "❤️", "👨‍👩‍👧", "🏳️‍🌈"} {
+		if got := displayWidth(e); got != 2 {
+			t.Errorf("%s: %d칸 (2여야 함)", e, got)
+		}
+	}
+	// 화살표·기호류는 대부분의 터미널에서 1칸이다.
+	for _, a := range []string{"⎇", "⇡", "⇣", "↻", "·"} {
+		if got := displayWidth(a); got != 1 {
+			t.Errorf("%s: %d칸 (1이여야 함)", a, got)
+		}
+	}
+}
+
+func TestTextPresentationSymbolsStayOneColumn(t *testing.T) {
+	// 이모지 블록 안에도 텍스트 표현이 기본인 글자가 있다. 통째로 2칸으로 세면
+	// 크레딧이 불필요하게 한 줄 내려간다. VS16 이 붙으면 그때 2칸이 된다.
+	for _, c := range []struct {
+		s    string
+		want int
+	}{
+		{"🛠", 1}, {"🛠️", 2}, // U+1F6E0 — VS16 이 승격시킨다
+		{"🛰", 1}, {"🛰️", 2}, // U+1F6F0
+		{"🚀", 2}, {"🛬", 2}, // 원래 Emoji_Presentation
+	} {
+		if got := displayWidth(c.s); got != c.want {
+			t.Errorf("%s (U+%04X): %d칸 (%d여야 함)", c.s, []rune(c.s)[0], got, c.want)
+		}
+	}
+}

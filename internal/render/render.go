@@ -170,26 +170,30 @@ func Lines(v View, s Style) []string {
 	// 곧 프롬프트가 밀리는 양이다. 내려야 할 때만 줄을 따로 쓴다.
 	sep := s.c(dim, " · ")
 	row := strings.Join(parts, sep)
-	// 배지는 세그먼트가 아니라 **머리표**다 — 구분자를 붙이지 않는다. 폭 계산
-	// 전에 붙여야 크레딧이 내려갈지 판단에 배지 폭까지 들어간다.
+	// 배지는 세그먼트가 아니라 **머리표**다 — 구분자를 붙이지 않는다. 그래서
+	// 크레딧까지 다 이은 **뒤에** 붙인다. 먼저 붙이면 나머지가 비었을 때
+	// 크레딧이 배지에 " · " 로 이어져 배지가 세그먼트처럼 보인다.
 	//
-	// 나머지가 다 비어도 배지는 낸다. stdin 도 cache 도 빈 렌더가 정보가 가장
-	// 적은 순간인데, 하필 거기서 "여기는 평소 자리가 아니다" 신호가 사라지면
-	// 안 된다.
-	if b := badgeText(v.Badge, s); b != "" {
-		if row == "" {
-			row = b
-		} else {
-			row = b + " " + row
-		}
-	}
+	// 대신 폭 판단에는 배지 폭을 따로 넘긴다 — 붙는 순서와 무관하게 줄에는
+	// 들어가는 폭이다.
+	badge := badgeText(v.Badge, s)
 	cl := creditLine(v, s)
-	standalone := cl != "" && s.creditStandalone(v, row, cl, sep)
+	standalone := cl != "" && s.creditStandalone(v, row, cl, sep, displayWidth(badge))
 	if cl != "" && !standalone {
 		if row == "" {
 			row = cl
 		} else {
 			row += sep + cl
+		}
+	}
+	// 나머지가 다 비어도 배지는 낸다. stdin 도 cache 도 빈 렌더가 정보가 가장
+	// 적은 순간인데, 하필 거기서 "여기는 평소 자리가 아니다" 신호가 사라지면
+	// 안 된다.
+	if badge != "" {
+		if row == "" {
+			row = badge
+		} else {
+			row = badge + " " + row
 		}
 	}
 	if row != "" {
@@ -401,7 +405,7 @@ func statusNote(v View, s Style) string {
 // — creditLine 의 분기와 짝이므로 한쪽만 고치지 않는다. 다른 하나는 폭으로,
 // 터미널을 알 때(COLUMNS) 붙이면 넘칠 경우다. 넘치면 터미널이 잘라 내거나 감아서
 // 어차피 두 줄이 되는데, 그 두 줄은 우리가 고른 자리에서 갈리지 않는다.
-func (s Style) creditStandalone(v View, row, credit, sep string) bool {
+func (s Style) creditStandalone(v View, row, credit, sep string, badgeWidth int) bool {
 	cv := v.Credits
 	if !cv.Enabled || cv.Spending {
 		return true
@@ -412,7 +416,10 @@ func (s Style) creditStandalone(v View, row, credit, sep string) bool {
 	if s.Width <= 0 {
 		return false
 	}
-	w := displayWidth(row) + displayWidth(credit)
+	w := displayWidth(row) + displayWidth(credit) + badgeWidth
+	if badgeWidth > 0 {
+		w++ // 배지 뒤의 공백 한 칸
+	}
 	if row != "" {
 		w += displayWidth(sep)
 	}

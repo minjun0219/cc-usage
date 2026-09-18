@@ -317,7 +317,7 @@ func TestAccountCheckFollowsLimits(t *testing.T) {
 	if !NeedAccountCheck(src, a, st, now) {
 		t.Fatal("첫 렌더에서 확인해야 한다")
 	}
-	st.AccountAt, st.AccountCheckedAt = AccountKey(src, a), now
+	st.AccountSource, st.AccountAt, st.AccountCheckedAt = src, a.Key(), now
 
 	// 한도가 그대로고 TTL 안이면 파일을 읽지 않는다 — 여기서 성능을 산다.
 	if NeedAccountCheck(src, a, st, now.Add(time.Second)) {
@@ -350,7 +350,7 @@ func TestAccountCheckHasCeiling(t *testing.T) {
 		t.Fatal("이 테스트의 전제(반올림 충돌)가 깨졌다")
 	}
 	const src = "/home/u/.claude.json"
-	st := &store.StateFile{AccountAt: AccountKey(src, low), AccountCheckedAt: now}
+	st := &store.StateFile{AccountSource: src, AccountAt: low.Key(), AccountCheckedAt: now}
 
 	if NeedAccountCheck(src, same, st, now.Add(30*time.Second)) {
 		t.Error("TTL 안에서는 읽지 않는다")
@@ -371,13 +371,23 @@ func TestAccountKeyIncludesSource(t *testing.T) {
 	personal := "/home/u/.claude.json"
 
 	// 회사 세션이 먼저 캐시를 채운다.
-	st := &store.StateFile{AccountEmail: "work@example.com",
-		AccountAt: AccountKey(work, lim), AccountCheckedAt: now}
+	st := &store.StateFile{AccountSource: work, AccountEmail: "work@example.com",
+		AccountAt: lim.Key(), AccountCheckedAt: now}
 	// 같은 state.json 을 보는 개인 세션은 그 값을 그대로 쓰면 안 된다.
 	if !NeedAccountCheck(personal, lim, st, now) {
-		t.Error("보는 계정 파일이 다르면 캐시를 재사용하면 안 된다")
+		t.Error("보는 계정 파일이 다르면 다시 확인해야 한다")
 	}
 	if NeedAccountCheck(work, lim, st, now) {
 		t.Error("같은 계정 파일이면 캐시를 쓴다")
+	}
+
+	// 확인이 필요하다고 판정되는 것만으로는 부족하다. 새 파일을 아직 못 읽어
+	// 캐시가 그대로 남아 있는 동안, 렌더가 그 값을 쓰면 개인 세션에 회사 배지가
+	// 뜬다 — 자리가 다르면 아예 내주지 않아야 한다.
+	if got := AccountCached(personal, st); got != "" {
+		t.Errorf("다른 자리의 캐시를 내주면 안 된다: %q", got)
+	}
+	if got := AccountCached(work, st); got != "work@example.com" {
+		t.Errorf("같은 자리면 캐시를 쓴다: %q", got)
 	}
 }

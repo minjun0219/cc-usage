@@ -24,12 +24,15 @@ type claudeConfig struct {
 	} `json:"oauthAccount"`
 }
 
-// Email returns the logged-in account's email, or "" when it cannot be read.
+// Email returns the logged-in account's email. ok is true only when a candidate
+// file was **read and parsed**; 파일이 없거나 JSON 이 깨졌으면 false 다.
 //
-// 빈 문자열은 실패가 아니라 "모른다" 다 — 호출자는 배지를 생략하면 된다.
-// 파일 없음·파싱 실패·필드 없음이 모두 같은 결과로 떨어진다 (불변 조건 4번과
-// 같은 자세).
-func Email(c *config.Config) string {
+// 실패와 "읽었는데 이메일이 없다" 를 가른다. 이 둘을 같게 다루면 일시적 실패가
+// 캐시에 "이메일 없음" 으로 확정 기록되고, 이 기능에서 "배지 없음" 은 그 자체로
+// **기본 계정** 이라는 신호이므로 틀린 신호가 된다. Claude Code 는 이 파일을
+// 원자적으로 재작성하므로(.claude.json.lock 이 함께 보인다) 그 창에 걸리는 일이
+// 실제로 있다.
+func Email(c *config.Config) (email string, ok bool) {
 	for _, p := range paths(c) {
 		b, err := os.ReadFile(p)
 		if err != nil {
@@ -39,11 +42,11 @@ func Email(c *config.Config) string {
 		if json.Unmarshal(b, &cc) != nil {
 			continue
 		}
-		if cc.OAuthAccount.EmailAddress != "" {
-			return cc.OAuthAccount.EmailAddress
-		}
+		// 여기까지 왔으면 계정 파일을 본 것이다. 이메일이 비어 있어도 그것이
+		// 이 계정의 사실이다 (API key 인증 등).
+		return cc.OAuthAccount.EmailAddress, true
 	}
-	return ""
+	return "", false
 }
 
 // Source is which account slot this session is looking at. **파일을 읽지 않는다**
@@ -62,20 +65,17 @@ func Source(c *config.Config) string {
 
 // paths is where .claude.json can live, most specific first.
 //
-// $CLAUDE_CONFIG_DIR 가 맨 앞이다 — 그것이 **지금 도는 세션이 실제로 쓰는 값**
-// 이라, 설정에 뭐라고 적혀 있든 이 세션의 계정은 그쪽이다. 이걸 안 보면
-// `CLAUDE_CONFIG_DIR=~/.claude-work claude` 로 연 세션에서 배지가 기본 계정을
-// 가리킨다(조용히 틀린다).
+// $CLAUDE_CONFIG_DIR 가 걸려 있으면 **그것 하나뿐**이고, 아니면
+// `<config_dir>/.claude.json` → `~/.claude.json` 순이다.
 //
-// 기본 설치에서는 홈 루트(`~/.claude.json`)에만 있고 앞의 두 경로는 없다 —
-// 그래서 자연히 마지막으로 떨어진다. CLAUDE_CONFIG_DIR 를 쓸 때 .claude.json
-// 이 그 안에 놓이는지는 확인하지 못했으므로, 후보를 늘려 모르는 채로도 맞게
-// 동작하게 한다.
+// 환경변수가 배타인 이유: 그것이 지금 도는 세션이 실제로 쓰는 값이라 그 세션의
+// 계정은 그쪽이고, 거기서 못 읽었다고 다른 후보를 보면 **다른 계정**의 이메일을
+// 집어 온다. `claude` 를 CLAUDE_CONFIG_DIR 로 돌리면 `.claude.json` 이 그 안에
+// 생기는 것을 실측으로 확인했다(2026-09-18).
 //
 // 주의: 이것은 배지만 고친다. CLAUDE_CONFIG_DIR 만 바꾸고 XDG_CACHE_HOME 을
 // 그대로 두면 cache 는 여전히 두 계정이 공유해서 한도·크레딧이 섞인다.
-// 계정을 나누는 문서화된 방법은 CC_USAGE_CONFIG 와 XDG_CACHE_HOME 을 함께
-// 나누는 것이다.
+// 계정을 나누는 문서화된 방법은 셋을 함께 나누는 것이다.
 func paths(c *config.Config) []string {
 	// CLAUDE_CONFIG_DIR 가 걸려 있으면 **그것만** 본다. 다른 후보를 남겨 두면,
 	// 그 디렉터리의 .claude.json 이 없거나 oauthAccount 가 비었을 때(API key

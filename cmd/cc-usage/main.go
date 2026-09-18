@@ -116,13 +116,23 @@ func runStatusline(args []string) error {
 	// 이유와 놓치는 경우는 core.NeedAccountCheck 에 적혀 있다.
 	// Source 는 파일을 읽지 않는다 — 읽는 것은 아래 Email 뿐이고, 그것도
 	// 판정이 통과했을 때만이다.
-	if src := account.Source(p); core.NeedAccountCheck(src, lim, &st, now) {
-		st.AccountEmail, st.AccountAt, st.AccountCheckedAt = account.Email(p), core.AccountKey(src, lim), now
-		dirty = true
+	src := account.Source(p)
+	if core.NeedAccountCheck(src, lim, &st, now) {
+		// 읽기에 실패하면 캐시를 건드리지 않는다. 빈 값으로 덮으면 일시적
+		// 실패(원자적 재작성 창 등)가 "기본 계정" 이라는 틀린 신호로 최대 TTL
+		// 동안 굳는다. 손대지 않으면 다음 렌더에 다시 시도한다.
+		if email, ok := account.Email(p); ok {
+			st.AccountSource, st.AccountEmail = src, email
+			st.AccountAt, st.AccountCheckedAt = lim.Key(), now
+			dirty = true
+		}
 	}
+	// 캐시를 남겨 두더라도 **다른 자리의 것이면 그리지 않는다.**
 	var badge *config.Badge
-	if b, ok := p.Badges[st.AccountEmail]; ok && st.AccountEmail != "" {
-		badge = &b
+	if email := core.AccountCached(src, &st); email != "" {
+		if b, ok := p.Badges[email]; ok {
+			badge = &b
+		}
 	}
 
 	alert, alertDirty := core.Alerts(p, lim, &st, now)
