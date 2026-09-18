@@ -58,6 +58,25 @@ make install            # ~/.local/bin/cc-usage
 
 ## 설정
 
+### 계정 나누기
+
+cc-usage는 **설정 파일 하나 = 계정 하나**입니다. 계정을 여럿 보려면 설정을 나누는 게 아니라 **프로세스를 나눕니다.**
+
+```sh
+# 개인 (기본)
+claude
+
+# 회사 — 설정도 cache 도 통째로 갈린다
+CLAUDE_CONFIG_DIR=~/.claude-work \
+CC_USAGE_CONFIG=~/.config/cc-usage/work.json \
+XDG_CACHE_HOME=~/.cache/cc-usage-work \
+  claude
+```
+
+**셋을 함께 주는 것이 중요합니다.** `CLAUDE_CONFIG_DIR`만 바꾸면 Claude Code 계정만 갈리고 cc-usage는 같은 설정·같은 cache를 씁니다 — 한도·크레딧 baseline·경보 상태가 두 계정 사이에 섞입니다.
+
+머신이 갈리면(회사 맥 / 집 맥) 각 머신에 설정 하나씩 두면 되고, 계정 타입이 다르면 `source`만 각자 적습니다.
+
 ### 1. `~/.config/cc-usage/config.json`
 
 [`examples/config.json`](examples/config.json) 참고. 주요 필드:
@@ -74,6 +93,7 @@ make install            # ~/.local/bin/cc-usage
 | `credit_divisor` | 100 | `used_credits` 단위 환산 (cent 가정) |
 | `currency` | `$` | 표시 통화 기호 |
 | `always_show_credits` | false | 크레딧이 0이어도 줄 표시. stdin 모드에서는 한도 전에도 API를 부르게 됩니다 |
+| `badges` | – | 로그인된 계정을 이메일로 알아보는 표시 (아래 참고) |
 | `alert_percent` | 90 | 이 %를 넘으면 "임박" 강조. **`0`이면 임박 경고를 끄고** 소진(100%)만 강조 |
 | `guard` | false | `cc-usage guard` 활성화 |
 | `extra_commands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |
@@ -87,6 +107,36 @@ CC_USAGE_CONFIG=~/.config/cc-usage/work.json \
 XDG_CACHE_HOME=~/.cache/cc-usage-work \
   cc-usage statusline
 ```
+
+#### `badges` — 어느 계정으로 돌고 있는지
+
+계정마다 상태 줄 앞에 작은 표시를 붙입니다. **키는 이메일**입니다.
+
+```json
+"badges": {
+  "work@example.com": { "emoji": "🏢" },
+  "me@example.com":   { "color": "blue", "glyph": "◆" }
+}
+```
+
+- `emoji`가 있으면 그것만 씁니다 (이모지는 제 색을 가지므로 `color`를 보지 않습니다)
+- 없으면 `glyph`(기본 `●`)를 `color`로 칠합니다
+- `color`는 이름(`blue`·`brightblue`·`cyan`·`green`·`yellow`·`magenta`·`red`·`gray`·`white`) 또는 256 인덱스(`"33"`)
+- **목록에 없는 계정은 아무것도 붙지 않습니다.** 평소 쓰는 계정을 안 적어두면, 표시가 뜨는 것 자체가 "여기는 평소 자리가 아니다"라는 신호가 됩니다
+
+> **빨강은 피하는 게 좋습니다.** 이 줄에서 빨강은 "여기서 멈춘다"(한도·경보)를 뜻하도록 축을 갈라 뒀습니다. 막지는 않습니다.
+
+계정은 Claude Code 자신의 `.claude.json`에 있는 `oauthAccount.emailAddress`로 알아냅니다 — **누가 계정을 바꾸든 결과가 드러나는 단일 진실 원천**이라, 전환 도구를 알 필요가 없습니다. 읽기만 합니다.
+
+찾는 순서는 `$CLAUDE_CONFIG_DIR/.claude.json` → `<config_dir>/.claude.json` → `~/.claude.json`입니다. 환경변수가 맨 앞인 이유는 그것이 **지금 도는 세션이 실제로 쓰는 값**이기 때문입니다.
+
+> ⚠️ **배지만 따라갑니다.** `CLAUDE_CONFIG_DIR`만 바꾸고 `XDG_CACHE_HOME`을 그대로 두면 cache를 두 계정이 공유해서 **한도·크레딧·경보 상태가 섞입니다.** 배지는 맞는데 숫자가 틀린 상태가 되니, 계정을 나눌 때는 [계정 나누기](#계정-나누기)를 따르세요.
+
+매 렌더 읽지는 않습니다. **한도 값이 움직였을 때, 그리고 최소 1분에 한 번** 다시 읽습니다. 앞은 빠르고(계정이 바뀌면 한도도 바뀝니다) 뒤는 상한을 줍니다 — 한도 퍼센트는 정수로 반올림되므로 저사용 구간에서는 값이 달라도 같은 것으로 보여, 한도 변화만으로는 다시 읽는다는 보장이 없습니다. 최악의 지연은 1분입니다.
+
+읽기 실패·파싱 실패·필드 없음은 모두 "표시 없음"으로 떨어집니다. `config_dir`을 기본값이 아닌 곳으로 적었거나 `CLAUDE_CONFIG_DIR`이 설정돼 있는데 거기서 못 찾은 경우에도 **홈 루트로 떨어지지 않습니다** — 그건 다른 계정의 파일이라, 배지와 숫자가 서로 다른 계정을 가리키게 됩니다. 틀린 배지보다 배지 없음이 낫습니다.
+
+**cc-usage는 계정을 바꾸지 않습니다.** 지금 로그인된 계정을 알아보게만 합니다.
 
 #### `alert_percent` — 한도 임박 강조
 

@@ -467,3 +467,64 @@ func TestCube256Axis(t *testing.T) {
 		t.Errorf("흰색 = %d want 231", got)
 	}
 }
+
+func TestBadge(t *testing.T) {
+	s := Style{Color: true}
+	cases := []struct {
+		name  string
+		badge *config.Badge
+		want  string
+	}{
+		{"없으면 표시 없음", nil, ""},
+		{"이모지는 그대로", &config.Badge{Emoji: "🏢"}, "🏢"},
+		{"이모지가 색을 이긴다", &config.Badge{Emoji: "🏢", Color: "blue"}, "🏢"},
+		{"글리프 기본값은 ●", &config.Badge{Color: "blue"}, "\033[34m●\033[0m"},
+		{"글리프 교체", &config.Badge{Color: "cyan", Glyph: "◆"}, "\033[36m◆\033[0m"},
+		{"256 인덱스", &config.Badge{Color: "33", Glyph: "◆"}, "\033[38;5;33m◆\033[0m"},
+		// 오타로 글리프가 사라지는 것보다 색 없이 뜨는 편이 낫다.
+		{"모르는 색이면 색만 빠짐", &config.Badge{Color: "purpel"}, "●"},
+	}
+	for _, c := range cases {
+		if got := badgeText(c.badge, s); got != c.want {
+			t.Errorf("%s: got %q want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestBadgeIsPrefixNotSegment(t *testing.T) {
+	now := time.Now()
+	cfg := &config.Config{}
+	cfg.ApplyDefaults()
+	uf := &store.UsageFile{}
+	lim := core.Limits{FiveHour: &store.Window{Percent: 30}, FromStdin: true}
+	line := func(b *config.Badge) string {
+		return Lines(View{Config: cfg, Badge: b, Model: "Opus 5", Limits: lim, Usage: uf,
+			Credits: core.Credits(cfg, lim, uf, now), Now: now}, Style{})[0]
+	}
+	// 배지 뒤에는 구분자가 아니라 공백 하나다 — 세그먼트가 아니라 머리표다.
+	if got := line(&config.Badge{Emoji: "🏢"}); got != "🏢 Opus 5 · 5h 70%" {
+		t.Errorf("배지 있음: %q", got)
+	}
+	if got := line(nil); got != "Opus 5 · 5h 70%" {
+		t.Errorf("배지 없음: %q", got)
+	}
+	// 배지 폭이 크레딧 배치 판단에 들어가야 한다 (이모지는 2칸).
+	if displayWidth(line(&config.Badge{Emoji: "🏢"}))-displayWidth(line(nil)) != 3 {
+		t.Errorf("배지 폭이 반영되지 않는다")
+	}
+}
+
+func TestBadgeSurvivesEmptyRow(t *testing.T) {
+	// stdin 도 cache 도 빈 렌더가 정보가 가장 적은 순간이다. 하필 거기서
+	// "여기는 평소 자리가 아니다" 신호가 사라지면 안 된다.
+	now := time.Now()
+	cfg := &config.Config{}
+	cfg.ApplyDefaults()
+	uf := &store.UsageFile{}
+	lim := core.Limits{FromStdin: true}
+	lines := Lines(View{Config: cfg, Badge: &config.Badge{Emoji: "🏢"},
+		Limits: lim, Usage: uf, Credits: core.Credits(cfg, lim, uf, now), Now: now}, Style{})
+	if len(lines) != 1 || lines[0] != "🏢" {
+		t.Errorf("배지만 남아야 한다: %q", lines)
+	}
+}

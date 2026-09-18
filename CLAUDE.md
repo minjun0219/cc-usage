@@ -42,6 +42,12 @@ examples/           config, settings.json 예시
 
 **`context_window`에는 `remaining_percentage`도 온다** (공식 문서 확인). 지금은 `used_percentage`만 쓰지만, ctx를 한도 창처럼 "남은 비율"로 뒤집고 싶어지면 `100 -` 계산 없이 그 필드를 쓰면 된다. `context_window_size`도 온다 — 기본 200000, 확장 모델은 1000000. **compaction 임계는 오지 않는다** — ctx 색이 "위험"을 말하지 않고 차오르는 정도만 나타내는 이유다.
 
+**Team 계정과 개인 계정은 `organizationUuid` 로 갈리지 않는다** — 개인 계정도 이 필드를 갖는다(2026-09-18 양쪽 실측). `.claude.json` 만으로 계정을 가리려면 `oauthAccount.emailAddress` 뿐이고, 두 계정 모두 채워져 온다. 확실히 가르는 `organization_type`(`claude_team`)·`seat_tier`(`team_tier_1`)는 **`/api/oauth/profile`** 에 있는데 그건 API 호출이 필요하다 — cc-usage 는 아직 이 엔드포인트를 쓰지 않는다.
+
+**`.claude.json` 의 `oauthAccount.hasExtraUsageEnabled`** 로 크레딧 활성 여부를 API 없이 알 수 있다. 지금 guard 는 cache 가 비면 fail-open 으로 통과시키는데, 이걸 쓰면 그 구간을 줄일 수 있다. 아직 쓰지 않는다.
+
+**Team 계정은 `extra_usage.is_enabled: true` 다** (2026-09-18 확인). 개인 계정의 `false`(`out_of_credits`)와 다르다 — guard 가 실제로 막을 상황은 Team 계정 쪽에 있다.
+
 **`COLUMNS`·`LINES`는 실제로 온다.** 이 맥의 Ghostty 에서 `COLUMNS=127 LINES=72` 로 확인했다(`extra_commands` 로 환경을 찍어 봤다). statusline 은 stdout 이 파이프라 `tput`·ioctl 로는 폭을 못 읽지만, Claude Code 가 렌더 직전에 이 둘을 넣어 준다 — 공식 문서에도 명시돼 있다. `LINES` 는 아직 쓰지 않는다.
 
 아직 쓰지 않는 필드: `decimal_places` · `currency`("USD") · `spend_limit_reached` · `user_disabled` · `disabled_reason`. 앞 둘은 `credit_divisor`/`currency` 설정을 없앨 근거가 되고, `spend_limit_reached`는 guard가 볼 만하다.

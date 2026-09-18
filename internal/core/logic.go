@@ -2,6 +2,7 @@
 package core
 
 import (
+	"fmt"
 	"time"
 
 	"cc-usage/internal/config"
@@ -36,6 +37,52 @@ func (l Limits) Peak() float64 {
 		}
 	}
 	return peak
+}
+
+// Key is a snapshot of the current limit values.
+//
+// 계정이 바뀌면 한도도 바뀐다. 그래서 이 키가 달라졌다는 것은 "로그인된 계정을
+// 다시 확인해 볼 만하다" 는 뜻이다. 창이 하나도 없어도 빈 문자열이 되지 않게
+// 해서, 첫 렌더(저장된 키가 "")가 항상 확인을 한 번 거치게 한다.
+func (l Limits) Key() string {
+	f, s := "-", "-"
+	if l.FiveHour != nil {
+		f = fmt.Sprintf("%.0f", l.FiveHour.Percent)
+	}
+	if l.SevenDay != nil {
+		s = fmt.Sprintf("%.0f", l.SevenDay.Percent)
+	}
+	return f + "/" + s
+}
+
+// accountTTL bounds how long a stale badge can survive.
+//
+// 한도 변화만으로는 상한이 없다. Key() 가 퍼센트를 정수로 반올림하기 때문에
+// 저사용 구간에서는 3.2% 와 3.4% 가 같은 키가 되고, 그 구간에 머무는 동안
+// 계정이 바뀌어도 영영 다시 읽지 않는다 — "프롬프트 한 번이면 움직인다" 는
+// 고사용 구간에서만 참이었다. 그래서 한도와 무관한 천장을 따로 둔다.
+//
+// 1분이면 최악의 staleness 가 1분이고 비용은 분당 0.62ms 다.
+const accountTTL = time.Minute
+
+// NeedAccountCheck reports whether the logged-in account should be re-read.
+//
+// 매 렌더 읽지 않는 이유는 성능이다 — .claude.json 은 프로젝트가 쌓일수록
+// 커지고, 읽는 비용이 파일 크기에 비례한다.
+//
+// 두 신호를 쓴다. 한도가 움직이면 곧바로(계정이 바뀌면 한도도 바뀐다), 그렇지
+// 않아도 accountTTL 마다 한 번. 앞은 빠르고 뒤는 상한을 준다.
+func NeedAccountCheck(source string, lim Limits, st *store.StateFile, now time.Time) bool {
+	return st.AccountAt != AccountKey(source, lim) || now.Sub(st.AccountCheckedAt) >= accountTTL
+}
+
+// AccountKey identifies "어느 계정 파일을, 어느 한도에서 봤나".
+//
+// 경로가 키에 들어가야 하는 이유: state.json 은 XDG_CACHE_HOME 을 나누지 않으면
+// 두 세션이 공유한다. 이메일만 캐시하면 한도 키가 우연히 같을 때(저사용·0%
+// 구간은 흔하다) 한쪽이 다른 쪽의 이메일로 배지를 그린다.
+func AccountKey(source string, lim Limits) string {
+	return source + "|" + lim.Key()
 }
 
 // UseStdin reports whether limits should come from stdin for this profile.

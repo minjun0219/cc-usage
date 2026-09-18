@@ -2,6 +2,15 @@
   "config_dir": "~/.claude",
   "source": "stdin",
   "alert_percent": 90,
+  "badges": {
+    "work@example.com": {
+      "emoji": "🏢"
+    },
+    "me@example.com": {
+      "color": "blue",
+      "glyph": "◆"
+    }
+  },
   "guard": false,
   "extra_commands": [
     {
