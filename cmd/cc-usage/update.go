@@ -1,0 +1,116 @@
+package main
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+// repoPath is where this binary was built from, injected at build time by the
+// Makefile. `cc-usage update` pulls and reinstalls from there.
+//
+// 설정 항목으로 두지 않은 이유: 빌드한 자리가 곧 답이라 사용자가 적어 줄 것이
+// 없다. 비어 있으면(직접 go build 한 경우 등) update 는 그 사실을 말하고 멈춘다.
+var repoPath = ""
+
+// runUpdate pulls the source and reinstalls.
+//
+// 자동 업데이트가 아니다 — 부를 때만 돈다. 세션 도중에 동작이 조용히 바뀌는
+// 것을 피하려는 것이고, 그런 어긋남은 실제로 사고를 냈다(설정이 옛 플래그를
+// 들고 있는데 바이너리가 그것을 모르는 상태).
+func runUpdate(args []string) error {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	check := fs.Bool("check", false, "받지 않고 뒤처졌는지만 본다")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if repoPath == "" {
+		return errors.New("이 바이너리에는 소스 경로가 박혀 있지 않습니다 (make install 로 설치하지 않았습니다)")
+	}
+	if fi, err := os.Stat(filepath.Join(repoPath, ".git")); err != nil || !fi.IsDir() {
+		return fmt.Errorf("소스를 찾을 수 없습니다: %s (옮겼거나 지웠습니까?)", repoPath)
+	}
+	fmt.Printf("소스: %s\n", repoPath)
+
+	// 원격 상태를 먼저 본다. fetch 만으로는 작업 트리가 바뀌지 않는다.
+	if out, err := gitIn(repoPath, "fetch", "--quiet", "origin"); err != nil {
+		return fmt.Errorf("fetch 실패: %w%s", err, indent(out))
+	}
+	behind, ahead, ok := counts(repoPath)
+	if !ok {
+		// upstream 이 없으면 비교할 대상이 없다. 모르는 것을 "최신" 이라고
+		// 말하지 않는다 — 그 말을 믿고 넘어가면 뒤처진 채로 남는다.
+		return errors.New("upstream 이 없어 비교할 수 없습니다 (브랜치가 원격을 추적하고 있습니까?)")
+	}
+	switch {
+	case behind == 0 && ahead == 0:
+		fmt.Println("최신입니다.")
+	case behind == 0:
+		fmt.Printf("원격보다 %d커밋 앞서 있습니다 (받을 것 없음).\n", ahead)
+	default:
+		fmt.Printf("%d커밋 뒤처져 있습니다.\n", behind)
+	}
+	if *check || behind == 0 {
+		return nil
+	}
+
+	// 커밋하지 않은 변경이 있으면 멈춘다. 그 상태로 설치하면 돌고 있는
+	// 바이너리가 하는 일의 소스가 어디에도 없게 된다.
+	if out, _ := gitIn(repoPath, "status", "--porcelain"); strings.TrimSpace(out) != "" {
+		return fmt.Errorf("커밋하지 않은 변경이 있습니다 — 먼저 정리하세요:%s", indent(out))
+	}
+	if out, err := gitIn(repoPath, "pull", "--ff-only", "--quiet", "origin"); err != nil {
+		return fmt.Errorf("pull 실패 (갈라졌을 수 있습니다):%s", indent(out))
+	}
+
+	// 게이트를 통과하지 못한 것을 설치하지 않는다.
+	fmt.Println("make test …")
+	if out, err := run(repoPath, "make", "test"); err != nil {
+		return fmt.Errorf("테스트 실패 — 설치하지 않습니다:%s", indent(out))
+	}
+	fmt.Println("make install …")
+	if out, err := run(repoPath, "make", "install"); err != nil {
+		return fmt.Errorf("설치 실패:%s", indent(out))
+	}
+	now, _ := gitIn(repoPath, "describe", "--tags", "--always", "--dirty")
+	fmt.Printf("%s → %s\n", version, strings.TrimSpace(now))
+	return nil
+}
+
+// counts returns how far HEAD is behind and ahead of its upstream.
+//
+// ok 가 false 면 비교 자체가 안 된 것이다(upstream 없음 등). 0/0 으로 뭉개면
+// 호출자가 그것을 "최신" 으로 읽는다 — 모르는 것과 같은 것은 다르다.
+func counts(dir string) (behind, ahead int, ok bool) {
+	out, err := gitIn(dir, "rev-list", "--left-right", "--count", "HEAD...@{u}")
+	if err != nil {
+		return 0, 0, false
+	}
+	if n, err := fmt.Sscanf(strings.TrimSpace(out), "%d\t%d", &ahead, &behind); n != 2 || err != nil {
+		return 0, 0, false
+	}
+	return behind, ahead, true
+}
+
+func gitIn(dir string, args ...string) (string, error) {
+	return run(dir, "git", append([]string{"-C", dir}, args...)...)
+}
+
+func run(dir, name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func indent(s string) string {
+	s = strings.TrimRight(s, "\n")
+	if s == "" {
+		return ""
+	}
+	return "\n  " + strings.ReplaceAll(s, "\n", "\n  ")
+}

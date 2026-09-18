@@ -36,6 +36,7 @@ const usage = `cc-usage — Claude Code statusline / 크레딧 guard
   cc-usage refresh             usage API 1회 조회 (statusline이 자동 호출)
   cc-usage probe               usage API 원본 응답 출력 (필드 확인용)
   cc-usage doctor              설정/token/cache/keychain 진단
+  cc-usage update [--check]    소스를 받아 다시 설치 (--check: 뒤처졌는지만 확인)
   cc-usage version
 `
 
@@ -59,6 +60,8 @@ func main() {
 		err = runProbe(args)
 	case "doctor":
 		err = runDoctor(args)
+	case "update":
+		err = runUpdate(args)
 	case "version", "--version", "-v":
 		fmt.Println(version)
 	case "help", "--help", "-h":
