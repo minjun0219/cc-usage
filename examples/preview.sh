@@ -13,11 +13,28 @@ DIR=$(mktemp -d)
 trap 'rm -rf "$DIR"' EXIT
 export XDG_CACHE_HOME="$DIR/cache" CC_USAGE_CONFIG="$DIR/config.json"
 
+# 배지는 로그인된 계정(.claude.json)으로 정해지므로 가짜 계정 파일을 심는다.
+# HOME 을 임시 디렉터리로 돌려서 실제 계정을 건드리지 않는다.
+mkdir -p "$DIR/home"
+cat > "$DIR/home/.claude.json" <<'JSON'
+{"oauthAccount":{"emailAddress":"preview@example.com"}}
+JSON
+export HOME="$DIR/home"
+
 cat > "$DIR/config.json" <<JSON
 {"source":"stdin", "alert_percent":90,
  "keychain_service":"cc-usage-preview-absent",
- "credentials_file":"$DIR/absent.json"}
+ "credentials_file":"$DIR/absent.json",
+ "badges":{"preview@example.com":{"emoji":"🏢"}}}
 JSON
+
+# 배지 없는 설정 — 같은 상태를 배지 유무로 비교하려고 따로 둔다.
+sed 's/,$/,/; s/"badges":.*$/}/' "$DIR/config.json" > "$DIR/config-nobadge.json"
+python3 - "$DIR/config.json" "$DIR/config-nobadge.json" <<'PY2'
+import json, sys
+d = json.load(open(sys.argv[1])); d.pop("badges", None)
+json.dump(d, open(sys.argv[2], "w"))
+PY2
 
 NOW=$(date +%s)
 mkdir -p "$XDG_CACHE_HOME/cc-usage"
@@ -53,6 +70,23 @@ show "git repo 밖" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"/tmp\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
 
 show "빈 payload — 직전 stdin 값을 cache에서 그대로 쓴다" ""
+
+# ── 배지 ──────────────────────────────────────────────────────────
+# 배지는 붙는 자리와 줄바꿈 판단을 바꾼다. 테스트로는 폭만 잡히고 색·간격은
+# 눈으로 봐야 하므로, 경계 상태를 여기 고정해 둔다.
+printf '\n\033[1m── 배지 없음 (같은 상태 비교용)\033[0m\n'
+CC_USAGE_CONFIG="$DIR/config-nobadge.json" sh -c "printf '%s' '{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}' | $BIN statusline"
+
+show "배지 + 평소" \
+ "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
+
+show "배지 + 경보 (배지와 빨간 배지가 한 줄에)" \
+ "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":93,\"resets_at\":$R5}}}"
+
+# 직전 케이스가 남긴 한도 cache 를 지워야 진짜로 "아무것도 없는" 렌더가 된다.
+rm -f "$XDG_CACHE_HOME/cc-usage/state.json" "$XDG_CACHE_HOME/cc-usage/usage.json"
+show "배지만 (stdin 도 cache 도 빈 렌더)" \
+ "{\"session_id\":\"s\"}"
 
 # Team(api) 모드 — 한도 전에도 크레딧 줄이 뜬다. stdin 이 아니라 cache 의 usage 에서
 # 한도가 오는 상황이라, rate_limits 없는 payload 와 창이 담긴 usage.json 으로 만든다.

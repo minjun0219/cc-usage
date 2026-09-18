@@ -583,6 +583,13 @@ func TestEmojiWidths(t *testing.T) {
 			t.Errorf("%s (U+%04X): %d칸 (2여야 함)", e, []rune(e)[0], got)
 		}
 	}
+	// variation selector 와 ZWJ 는 자리를 먹지 않는다. 1칸으로 세면 이모지
+	// 하나가 3칸(⚡️)이나 8칸(가족)으로 계산돼 크레딧 배치가 어긋난다.
+	for _, e := range []string{"⚡️", "❤️", "👨‍👩‍👧", "🏳️‍🌈"} {
+		if got := displayWidth(e); got != 2 {
+			t.Errorf("%s: %d칸 (2여야 함)", e, got)
+		}
+	}
 	// 화살표·기호류는 대부분의 터미널에서 1칸이다.
 	for _, a := range []string{"⎇", "⇡", "⇣", "↻", "·"} {
 		if got := displayWidth(a); got != 1 {

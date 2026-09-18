@@ -24,8 +24,8 @@ type claudeConfig struct {
 	} `json:"oauthAccount"`
 }
 
-// Email returns the logged-in account's email. ok is false when no candidate
-// file could be read at all.
+// Email returns the logged-in account's email. ok is true only when a candidate
+// file was **read and parsed**; 파일이 없거나 JSON 이 깨졌으면 false 다.
 //
 // 실패와 "읽었는데 이메일이 없다" 를 가른다. 이 둘을 같게 다루면 일시적 실패가
 // 캐시에 "이메일 없음" 으로 확정 기록되고, 이 기능에서 "배지 없음" 은 그 자체로
