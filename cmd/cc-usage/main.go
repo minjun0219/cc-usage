@@ -117,8 +117,13 @@ func runStatusline(args []string) error {
 	// Source 는 파일을 읽지 않는다 — 읽는 것은 아래 Email 뿐이고, 그것도
 	// 판정이 통과했을 때만이다.
 	if src := account.Source(p); core.NeedAccountCheck(src, lim, &st, now) {
-		st.AccountEmail, st.AccountAt, st.AccountCheckedAt = account.Email(p), core.AccountKey(src, lim), now
-		dirty = true
+		// 읽기에 실패하면 캐시를 건드리지 않는다. 빈 값으로 덮으면 일시적
+		// 실패(원자적 재작성 창 등)가 "기본 계정" 이라는 틀린 신호로 최대 TTL
+		// 동안 굳는다. 손대지 않으면 다음 렌더에 다시 시도한다.
+		if email, ok := account.Email(p); ok {
+			st.AccountEmail, st.AccountAt, st.AccountCheckedAt = email, core.AccountKey(src, lim), now
+			dirty = true
+		}
 	}
 	var badge *config.Badge
 	if b, ok := p.Badges[st.AccountEmail]; ok && st.AccountEmail != "" {

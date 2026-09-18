@@ -25,13 +25,13 @@ func TestEmail(t *testing.T) {
 
 	// 기본 설치: 홈 루트에만 있다. <config_dir>/.claude.json 은 없다.
 	write(t, filepath.Join(home, ".claude.json"), `{"oauthAccount":{"emailAddress":"me@example.com","organizationName":"ACME"}}`)
-	if got := Email(&config.Config{ConfigDir: cfgDir}); got != "me@example.com" {
+	if got, _ := Email(&config.Config{ConfigDir: cfgDir}); got != "me@example.com" {
 		t.Errorf("홈 루트 폴백: %q", got)
 	}
 
 	// config_dir 쪽이 있으면 그쪽이 이긴다.
 	write(t, filepath.Join(cfgDir, ".claude.json"), `{"oauthAccount":{"emailAddress":"work@example.com"}}`)
-	if got := Email(&config.Config{ConfigDir: cfgDir}); got != "work@example.com" {
+	if got, _ := Email(&config.Config{ConfigDir: cfgDir}); got != "work@example.com" {
 		t.Errorf("config_dir 우선: %q", got)
 	}
 }
@@ -46,17 +46,17 @@ func TestNoFallbackAwayFromTheActiveProfile(t *testing.T) {
 	write(t, filepath.Join(home, ".claude.json"), `{"oauthAccount":{"emailAddress":"default@example.com"}}`)
 
 	custom := filepath.Join(home, ".claude-work") // 파일을 두지 않는다
-	if got := Email(&config.Config{ConfigDir: custom}); got != "" {
+	if got, _ := Email(&config.Config{ConfigDir: custom}); got != "" {
 		t.Errorf("다른 계정으로 새면 안 된다: %q", got)
 	}
 	// CLAUDE_CONFIG_DIR 이 걸려 있을 때도 같다.
 	t.Setenv("CLAUDE_CONFIG_DIR", custom)
-	if got := Email(&config.Config{ConfigDir: filepath.Join(home, ".claude")}); got != "" {
+	if got, _ := Email(&config.Config{ConfigDir: filepath.Join(home, ".claude")}); got != "" {
 		t.Errorf("환경변수가 걸려 있으면 홈 루트로 안 떨어진다: %q", got)
 	}
 	// 기본 설치(config_dir 이 ~/.claude)에서는 종전대로 홈 루트를 읽는다.
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
-	if got := Email(&config.Config{ConfigDir: filepath.Join(home, ".claude")}); got != "default@example.com" {
+	if got, _ := Email(&config.Config{ConfigDir: filepath.Join(home, ".claude")}); got != "default@example.com" {
 		t.Errorf("기본 설치는 종전대로: %q", got)
 	}
 }
@@ -68,18 +68,18 @@ func TestEmailUnknownIsEmpty(t *testing.T) {
 	t.Setenv("HOME", home)
 	cfg := &config.Config{ConfigDir: filepath.Join(home, ".claude")}
 
-	if got := Email(cfg); got != "" {
+	if got, _ := Email(cfg); got != "" {
 		t.Errorf("파일 없음: %q", got)
 	}
 	write(t, filepath.Join(home, ".claude.json"), `{ 깨진 json`)
-	if got := Email(cfg); got != "" {
+	if got, _ := Email(cfg); got != "" {
 		t.Errorf("깨진 JSON: %q", got)
 	}
 	write(t, filepath.Join(home, ".claude.json"), `{"oauthAccount":{"organizationName":"ACME"}}`)
-	if got := Email(cfg); got != "" {
+	if got, _ := Email(cfg); got != "" {
 		t.Errorf("emailAddress 없음: %q", got)
 	}
-	if got := Email(nil); got != "" {
+	if got, _ := Email(nil); got != "" {
 		t.Errorf("nil config: %q", got)
 	}
 }
@@ -94,17 +94,17 @@ func TestEmailFollowsClaudeConfigDir(t *testing.T) {
 	write(t, filepath.Join(workDir, ".claude.json"), `{"oauthAccount":{"emailAddress":"work@example.com"}}`)
 
 	cfg := &config.Config{ConfigDir: filepath.Join(home, ".claude")} // 설정은 기본값 그대로
-	if got := Email(cfg); got != "default@example.com" {
+	if got, _ := Email(cfg); got != "default@example.com" {
 		t.Errorf("환경변수 없으면 기본: %q", got)
 	}
 	t.Setenv("CLAUDE_CONFIG_DIR", workDir)
-	if got := Email(cfg); got != "work@example.com" {
+	if got, _ := Email(cfg); got != "work@example.com" {
 		t.Errorf("환경변수가 이겨야 한다: %q", got)
 	}
 	// 환경변수가 가리키는 곳에 파일이 없어도 홈 루트로 떨어지지 않는다.
 	// 이 세션의 계정은 환경변수 쪽이고, 홈 루트 파일은 다른 계정의 것이다.
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "nowhere"))
-	if got := Email(cfg); got != "" {
+	if got, _ := Email(cfg); got != "" {
 		t.Errorf("없는 경로면 배지 없음이어야 한다 (다른 계정으로 새면 안 됨): %q", got)
 	}
 }
@@ -122,7 +122,7 @@ func TestClaudeConfigDirIsExclusive(t *testing.T) {
 	write(t, filepath.Join(work, ".claude.json"), `{"someOtherKey":1}`) // oauthAccount 없음
 
 	t.Setenv("CLAUDE_CONFIG_DIR", work)
-	if got := Email(&config.Config{ConfigDir: personal}); got != "" {
+	if got, _ := Email(&config.Config{ConfigDir: personal}); got != "" {
 		t.Errorf("config_dir 프로필로 새면 안 된다: %q", got)
 	}
 	// 환경변수가 걸리면 후보는 그것 하나뿐이다.
@@ -146,5 +146,29 @@ func TestSourceDoesNotRead(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude-work"))
 	if got := Source(cfg); got != filepath.Join(home, ".claude-work", ".claude.json") {
 		t.Errorf("Source(env): %q", got)
+	}
+}
+
+func TestEmailDistinguishesFailureFromEmpty(t *testing.T) {
+	// 일시적 실패를 "이메일 없음" 과 같게 다루면, 그 값이 캐시에 굳어 최대 TTL
+	// 동안 "기본 계정" 이라는 틀린 신호를 낸다. Claude Code 는 이 파일을 원자적
+	// 으로 재작성하므로 그 창에 걸리는 일이 실제로 있다.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := &config.Config{ConfigDir: filepath.Join(home, ".claude")}
+
+	// 파일이 없다 → 못 읽었다 (ok=false). 호출자는 캐시를 건드리면 안 된다.
+	if email, ok := Email(cfg); ok || email != "" {
+		t.Errorf("파일 없음: %q ok=%v", email, ok)
+	}
+	// 깨진 JSON 도 마찬가지다 — 재작성 중일 수 있다.
+	write(t, filepath.Join(home, ".claude.json"), `{"oauthAccount": {`)
+	if _, ok := Email(cfg); ok {
+		t.Error("깨진 JSON 은 실패로 봐야 한다")
+	}
+	// 읽었는데 이메일이 없다 → 그것은 이 계정의 사실이다 (ok=true).
+	write(t, filepath.Join(home, ".claude.json"), `{"oauthAccount":{"organizationName":"ACME"}}`)
+	if email, ok := Email(cfg); !ok || email != "" {
+		t.Errorf("이메일 없는 계정: %q ok=%v", email, ok)
 	}
 }
