@@ -67,8 +67,9 @@ type StateFile struct {
 	// AccountEmail 과 AccountAt 은 배지용 캐시다. .claude.json 을 매 렌더 읽지
 	// 않기 위해, 한도 값이 움직였을 때만 다시 읽는다 — 계정이 바뀌면 한도도
 	// 바뀌기 때문이다. AccountAt 은 그때의 한도 스냅샷이다.
-	AccountEmail string `json:"account_email,omitempty"`
-	AccountAt    string `json:"account_at,omitempty"`
+	AccountEmail     string    `json:"account_email,omitempty"`
+	AccountAt        string    `json:"account_at,omitempty"`
+	AccountCheckedAt time.Time `json:"account_checked_at,omitempty"`
 }
 
 // AllowFile is written by `cc-usage allow`.

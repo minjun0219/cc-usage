@@ -55,16 +55,25 @@ func (l Limits) Key() string {
 	return f + "/" + s
 }
 
+// accountTTL bounds how long a stale badge can survive.
+//
+// 한도 변화만으로는 상한이 없다. Key() 가 퍼센트를 정수로 반올림하기 때문에
+// 저사용 구간에서는 3.2% 와 3.4% 가 같은 키가 되고, 그 구간에 머무는 동안
+// 계정이 바뀌어도 영영 다시 읽지 않는다 — "프롬프트 한 번이면 움직인다" 는
+// 고사용 구간에서만 참이었다. 그래서 한도와 무관한 천장을 따로 둔다.
+//
+// 1분이면 최악의 staleness 가 1분이고 비용은 분당 0.62ms 다.
+const accountTTL = time.Minute
+
 // NeedAccountCheck reports whether the logged-in account should be re-read.
 //
 // 매 렌더 읽지 않는 이유는 성능이다 — .claude.json 은 프로젝트가 쌓일수록
-// 커지고, 읽는 비용이 파일 크기에 비례한다. 대신 한도가 움직였을 때만 읽는다.
+// 커지고, 읽는 비용이 파일 크기에 비례한다.
 //
-// 놓치는 경우가 있다: 두 계정의 사용률이 똑같은 순간에 전환하면 그 렌더에서는
-// 안 잡힌다. 다만 한도는 프롬프트 한 번이면 움직이므로 곧 따라온다. 적극적으로
-// 감지하는 대신 그 지연을 받아들인 것이다.
-func NeedAccountCheck(lim Limits, st *store.StateFile) bool {
-	return st.AccountAt != lim.Key()
+// 두 신호를 쓴다. 한도가 움직이면 곧바로(계정이 바뀌면 한도도 바뀐다), 그렇지
+// 않아도 accountTTL 마다 한 번. 앞은 빠르고 뒤는 상한을 준다.
+func NeedAccountCheck(lim Limits, st *store.StateFile, now time.Time) bool {
+	return st.AccountAt != lim.Key() || now.Sub(st.AccountCheckedAt) >= accountTTL
 }
 
 // UseStdin reports whether limits should come from stdin for this profile.

@@ -29,10 +29,35 @@ func TestEmail(t *testing.T) {
 		t.Errorf("홈 루트 폴백: %q", got)
 	}
 
-	// config_dir 쪽이 있으면 그쪽이 이긴다 (CLAUDE_CONFIG_DIR 을 쓰는 경우 대비).
+	// config_dir 쪽이 있으면 그쪽이 이긴다.
 	write(t, filepath.Join(cfgDir, ".claude.json"), `{"oauthAccount":{"emailAddress":"work@example.com"}}`)
 	if got := Email(&config.Config{ConfigDir: cfgDir}); got != "work@example.com" {
 		t.Errorf("config_dir 우선: %q", got)
+	}
+}
+
+func TestNoFallbackAwayFromTheActiveProfile(t *testing.T) {
+	// 기본이 아닌 config_dir 을 적었는데 거기 .claude.json 이 없으면, 홈 루트를
+	// 읽어선 안 된다 — 그건 **다른 계정**의 파일이다. token 은 config_dir 쪽
+	// credentials 를 쓰므로 배지와 숫자가 서로 다른 계정을 가리키게 된다.
+	// 틀린 배지보다 배지 없음이 낫다.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	write(t, filepath.Join(home, ".claude.json"), `{"oauthAccount":{"emailAddress":"default@example.com"}}`)
+
+	custom := filepath.Join(home, ".claude-work") // 파일을 두지 않는다
+	if got := Email(&config.Config{ConfigDir: custom}); got != "" {
+		t.Errorf("다른 계정으로 새면 안 된다: %q", got)
+	}
+	// CLAUDE_CONFIG_DIR 이 걸려 있을 때도 같다.
+	t.Setenv("CLAUDE_CONFIG_DIR", custom)
+	if got := Email(&config.Config{ConfigDir: filepath.Join(home, ".claude")}); got != "" {
+		t.Errorf("환경변수가 걸려 있으면 홈 루트로 안 떨어진다: %q", got)
+	}
+	// 기본 설치(config_dir 이 ~/.claude)에서는 종전대로 홈 루트를 읽는다.
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	if got := Email(&config.Config{ConfigDir: filepath.Join(home, ".claude")}); got != "default@example.com" {
+		t.Errorf("기본 설치는 종전대로: %q", got)
 	}
 }
 
@@ -76,9 +101,10 @@ func TestEmailFollowsClaudeConfigDir(t *testing.T) {
 	if got := Email(cfg); got != "work@example.com" {
 		t.Errorf("환경변수가 이겨야 한다: %q", got)
 	}
-	// 환경변수가 가리키는 곳에 파일이 없으면 다음 후보로 떨어진다.
+	// 환경변수가 가리키는 곳에 파일이 없어도 홈 루트로 떨어지지 않는다.
+	// 이 세션의 계정은 환경변수 쪽이고, 홈 루트 파일은 다른 계정의 것이다.
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "nowhere"))
-	if got := Email(cfg); got != "default@example.com" {
-		t.Errorf("없는 경로면 폴백: %q", got)
+	if got := Email(cfg); got != "" {
+		t.Errorf("없는 경로면 배지 없음이어야 한다 (다른 계정으로 새면 안 됨): %q", got)
 	}
 }

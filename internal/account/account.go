@@ -70,8 +70,23 @@ func paths(c *config.Config) []string {
 	if c != nil && c.ConfigDir != "" {
 		out = append(out, filepath.Join(c.ConfigDir, ".claude.json"))
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		out = append(out, filepath.Join(home, ".claude.json"))
+	// 홈 루트 폴백은 **기본 설치일 때만** 쓴다.
+	//
+	// config_dir 에 다른 값을 적었거나 CLAUDE_CONFIG_DIR 가 설정돼 있으면, 이
+	// 세션의 계정은 그쪽이다. 거기서 파일을 못 찾았다고 홈 루트를 읽으면 **다른
+	// 계정의 이메일**을 집어 온다 — token 은 config_dir 쪽 credentials 를 쓰므로
+	// 배지와 숫자가 서로 다른 계정을 가리키게 된다.
+	//
+	// 그 경우에는 배지를 내지 않는다. 틀린 배지보다 배지 없음이 낫다.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return out
 	}
-	return out
+	if os.Getenv("CLAUDE_CONFIG_DIR") != "" {
+		return out
+	}
+	if c != nil && c.ConfigDir != "" && filepath.Clean(c.ConfigDir) != filepath.Join(home, ".claude") {
+		return out
+	}
+	return append(out, filepath.Join(home, ".claude.json"))
 }
