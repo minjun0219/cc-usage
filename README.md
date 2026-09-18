@@ -56,6 +56,21 @@ make test
 make install            # ~/.local/bin/cc-usage
 ```
 
+## 업데이트
+
+```bash
+cc-usage update --check   # 받지 않고 뒤처졌는지만 본다
+cc-usage update           # fetch → pull --ff-only → make test → make build → 설치
+```
+
+**자동이 아닙니다.** 부를 때만 돕니다 — 세션 도중에 동작이 조용히 바뀌면, 설정이 옛 플래그를 들고 있는데 바이너리는 그것을 모르는 상태가 됩니다. 실제로 한 번 겪었습니다.
+
+소스 경로는 `make install` 한 자리가 **빌드 시점에 바이너리에 박힙니다**. 적어 줄 설정이 없습니다.
+
+갱신하는 대상은 **지금 돌고 있는 그 파일**입니다(`os.Executable()`). 기본이 아닌 `PREFIX`에 설치했거나 바이너리를 옮겼어도 맞는 파일이 갱신되고, 심링크로 실행했으면 링크가 아니라 가리키는 실체를 갱신합니다. 결과 줄에 설치 경로를 같이 찍습니다.
+
+**하지 않는 경우** — 소스 경로가 안 박힌 바이너리 · 소스가 사라졌거나 git repo가 아님 · **upstream 없음**(모르는 것을 "최신"이라 말하지 않습니다) · 커밋하지 않은 변경이 있음 · 갈라짐(`--ff-only`) · `make test` 실패 · `make build` 실패. 어느 경우든 설치까지 가지 않습니다.
+
 ## 설정
 
 ### 계정 나누기
@@ -228,12 +243,13 @@ cc-usage allow [DURATION|off]
 cc-usage refresh
 cc-usage probe
 cc-usage doctor
+cc-usage update [--check]
 cc-usage version
 ```
 
 statusline은 stdout이 파이프라 `tput`·ioctl로 터미널 폭을 알 수 없습니다. Claude Code가 `COLUMNS`·`LINES`를 넣어 주므로 그걸 읽습니다. 표시 폭 계산은 ANSI를 걷어내고 한글·이모지를 2칸으로 세는데, 표준 라이브러리에 wcwidth가 없어 필요한 구간만 담은 근사입니다(`internal/render/width.go`).
 
-`NO_COLOR=1`이면 색상을 끕니다. 퍼센트 색은 `COLORTERM`이 `truecolor`/`24bit`면 24bit 그라데이션으로 끊김 없이 변하고, 아니면 3단계(green/yellow/red)로 떨어집니다 — 지원하지 않는 터미널에서 이스케이프가 글자로 새는 것보다 계단식 색이 낫습니다. 경보(배지·굵은 빨강)는 임계를 넘어선 상태라 고정색입니다. cache는 `~/.cache/cc-usage/` (0600).
+`NO_COLOR=1`이면 색상을 끕니다. 퍼센트 색은 **3단**입니다 — `COLORTERM`이 `truecolor`/`24bit`면 24bit 그라데이션으로 끊김 없이 변하고, `TERM`에 `256color`가 있으면 256색 큐브로 근사하고, 둘 다 아니면 3단계(green/yellow/red)로 떨어집니다. 지원하지 않는 터미널에서 이스케이프가 글자로 새는 것보다 계단식 색이 낫기 때문입니다. 실제로는 대개 가운데로 떨어집니다 — **`COLORTERM`은 statusline 프로세스까지 오지 않고 `TERM`만 옵니다**(실측). 경보(배지·굵은 빨강)는 임계를 넘어선 상태라 고정색입니다. cache는 `~/.cache/cc-usage/` (0600).
 
 ## 확장 아이디어
 
