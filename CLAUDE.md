@@ -52,7 +52,26 @@ examples/           config, settings.json 예시
 
 아직 쓰지 않는 필드: `decimal_places` · `currency`("USD") · `spend_limit_reached` · `user_disabled` · `disabled_reason`. 앞 둘은 `credit_divisor`/`currency` 설정을 없앨 근거가 되고, `spend_limit_reached`는 guard가 볼 만하다.
 
+## keychain service 이름 (2026-09-19 확인)
+
+기본 `~/.claude` 에서는 **접미사 없는 `Claude Code-credentials`** 다. `doctor` 로 token 이 실제로
+keychain 에서 읽히는 것을 확인했다(`source=keychain`).
+
+접미사가 붙은 항목(`Claude Code-credentials-28907b45` 등)이 이 맥에 **12개 실존한다.** Claude Code 가
+상황에 따라 접미사를 붙이는 것은 사실이다. **다만 접미사가 무엇의 해시인지는 알아내지 못했다** —
+keychain 메타데이터에 경로 힌트가 없고(`acct` 는 사용자명), CLI 가 Mach-O 바이너리라 문자열도 잡히지
+않는다. 알아내려면 새 config dir 로 로그인을 한 번 태워야 하는데 토큰이 새로 발급되는 부작용이 있다.
+
+**규칙을 몰라도 막히지 않는다.** `cc-usage doctor` 가 실제 keychain 을 긁어 후보를 전부 나열하므로,
+보고 `keychain_service` 에 적으면 된다. 규칙을 추론해 자동으로 고르려 들지 않는 이유가 이것이다 —
+틀린 추론으로 다른 계정의 token 을 집는 것보다 사용자가 보고 고르는 편이 낫다.
+
+**`config_dir` 은 `CLAUDE_CONFIG_DIR` 를 따르지 않는다.** 설정 파일의 값만 본다. 반면
+`internal/account` 는 그 환경변수를 배타적으로 본다 — **배지는 환경변수를 따라가고 token·creds 경로는
+따라가지 않는다.** 환경변수만 바꾸면 배지는 회사 계정인데 token 은 개인 계정 keychain 에서 읽는다.
+README 의 "계정 나누기" 가 설정을 함께 나누라고 안내해서 실사용에서는 드러나지 않지만, 두 축이 서로
+다른 것을 보고 있다는 사실은 그대로다. 아직 맞추지 않았다.
+
 ## 미확인 사항 (실제 계정으로 검증 필요)
 
-- `CLAUDE_CONFIG_DIR` 사용 시 keychain service 이름 규칙 (`cc-usage doctor`로 확인)
 - 크레딧으로 넘어간 뒤에도 stdin `rate_limits`가 100%로 유지되는지
