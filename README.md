@@ -147,7 +147,9 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 
 설정돼 있지 않으면 `<config_dir>/.claude.json` → `~/.claude.json` 순으로 봅니다.
 
-> ⚠️ **배지만 따라갑니다.** `CLAUDE_CONFIG_DIR`만 바꾸면 그것을 보는 건 배지뿐입니다 — cache를 두 계정이 공유해 **한도·크레딧·경보 상태가 섞이고**, cc-usage의 `config_dir`은 설정 파일 값만 보므로 **token·creds도 원래 계정에서 읽습니다.** 배지는 맞는데 숫자가 틀린 상태가 되니, 계정을 나눌 때는 [계정 나누기](#계정-나누기)를 따르세요.
+> ⚠️ **cache는 따라가지 않습니다.** `CLAUDE_CONFIG_DIR`를 바꾸면 배지도 `config_dir`도 그쪽을 보지만(token은 그 디렉터리의 `.credentials.json`에서 읽습니다), `XDG_CACHE_HOME`을 그대로 두면 cache를 두 계정이 공유해 **한도·크레딧 baseline·경보 상태가 섞입니다.** 계정을 나눌 때는 [계정 나누기](#계정-나누기)를 따르세요.
+>
+> 비기본 `config_dir`에서는 **keychain을 건너뜁니다.** 기본 keychain 이름(`Claude Code-credentials`)은 config dir과 무관하게 같은 값이라, 그대로 읽으면 반드시 *기본 계정*의 token을 집기 때문입니다. 그 디렉터리의 keychain 이름을 안다면 설정에 `keychain_service`로 적으면 그게 쓰입니다 — `cc-usage doctor`가 이 맥의 후보를 전부 나열합니다.
 
 매 렌더 읽지는 않습니다. **한도 값이 움직였을 때, 그리고 최소 1분에 한 번** 다시 읽습니다. 앞은 빠르고(계정이 바뀌면 한도도 바뀝니다) 뒤는 상한을 줍니다 — 한도 퍼센트는 정수로 반올림되므로 저사용 구간에서는 값이 달라도 같은 것으로 보여, 한도 변화만으로는 다시 읽는다는 보장이 없습니다. 최악의 지연은 1분입니다.
 

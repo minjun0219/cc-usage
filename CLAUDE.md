@@ -66,11 +66,18 @@ keychain 메타데이터에 경로 힌트가 없고(`acct` 는 사용자명), CL
 보고 `keychain_service` 에 적으면 된다. 규칙을 추론해 자동으로 고르려 들지 않는 이유가 이것이다 —
 틀린 추론으로 다른 계정의 token 을 집는 것보다 사용자가 보고 고르는 편이 낫다.
 
-**`config_dir` 은 `CLAUDE_CONFIG_DIR` 를 따르지 않는다.** 설정 파일의 값만 본다. 반면
-`internal/account` 는 그 환경변수를 배타적으로 본다 — **배지는 환경변수를 따라가고 token·creds 경로는
-따라가지 않는다.** 환경변수만 바꾸면 배지는 회사 계정인데 token 은 개인 계정 keychain 에서 읽는다.
-README 의 "계정 나누기" 가 설정을 함께 나누라고 안내해서 실사용에서는 드러나지 않지만, 두 축이 서로
-다른 것을 보고 있다는 사실은 그대로다. 아직 맞추지 않았다.
+### `CLAUDE_CONFIG_DIR` 는 설정값을 이긴다 (고침)
+
+`claude auth status` 를 다른 `CLAUDE_CONFIG_DIR` 로 돌리면 **`loggedIn: false`** 가 나온다 — Claude Code 는
+config dir 마다 자격 증명을 나눠 갖는다. 그래서 cc-usage 가 설정 파일의 `config_dir` 을 우선하면,
+환경변수를 바꾼 세션에서 **다른 계정의 token** 으로 API 를 부른다. 숫자가 통째로 남의 것이 되는데
+그럴듯해서 티도 안 난다. `ApplyDefaults` 가 환경변수를 우선하게 고쳤다.
+
+**그것만으로는 모자랐다.** `keychain_service` 기본값 `Claude Code-credentials` 는 접미사가 없어
+config dir 과 무관하게 같은 값이고, `token.go` 가 keychain 을 먼저 본다 — `config_dir` 을 옳게 맞춰도
+keychain 이 기본 계정 token 을 먼저 집어서 creds 파일 폴백까지 가지도 않았다. **비기본 config_dir 이면
+keychain 기본값을 주지 않는다**(건너뛰고 `<config_dir>/.credentials.json` 만 본다). 못 찾으면 숫자가 안
+나오는데, 틀린 계정의 숫자보다 낫다. 그 dir 의 keychain 이름을 아는 사용자는 설정에 적으면 그대로 쓰인다.
 
 ## 미확인 사항 (실제 계정으로 검증 필요)
 

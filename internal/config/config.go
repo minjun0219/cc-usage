@@ -127,14 +127,42 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) ApplyDefaults() {
-	if c.ConfigDir == "" {
+	// $CLAUDE_CONFIG_DIR 가 설정값을 **이긴다.** 그것이 지금 도는 세션이 실제로
+	// 쓰는 값이기 때문이다 — Claude Code 는 이 변수를 절대적으로 따른다. 다른
+	// 값을 주면 로그인 상태부터 갈린다(`claude auth status` 가 `loggedIn: false`
+	// 를 낸다, 2026-09-19 실측). 즉 자격 증명을 공유하지 않는다.
+	//
+	// 여기서 설정값을 우선하면, 환경변수를 바꾼 세션에서 cc-usage 가 **다른
+	// 계정의 token** 으로 API 를 부른다. 배지만 틀리는 게 아니라 5h/7d·크레딧
+	// 숫자가 통째로 남의 것이 되고, 그럴듯해서 티도 나지 않는다.
+	//
+	// internal/account 가 같은 이유로 이 변수를 배타적으로 본다. 두 축이 같은
+	// 것을 보게 하는 쪽이 여기다.
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		c.ConfigDir = d
+	} else if c.ConfigDir == "" {
 		c.ConfigDir = "~/.claude"
 	}
 	c.ConfigDir = Expand(c.ConfigDir)
 	if c.Source == "" {
 		c.Source = SourceAuto
 	}
-	if c.KeychainService == "" {
+	// keychain 기본값은 **기본 config_dir 일 때만** 준다.
+	//
+	// `Claude Code-credentials` 는 접미사가 없어 config_dir 과 무관하게 같은
+	// 값이다. 그래서 비기본 dir 에서 이걸 읽으면 **반드시 기본 계정의 token**
+	// 을 집는다 — token.go 가 keychain 을 먼저 보므로 creds 파일 폴백까지 가지도
+	// 않는다. config_dir 을 옳게 맞춰도 숫자가 남의 것이 되는 이유가 이것이었다.
+	//
+	// 비워 두면 keychain 을 건너뛰고 `<config_dir>/.credentials.json` 을 본다.
+	// 못 찾으면 숫자가 안 나오는데, **틀린 계정의 숫자보다 낫다.** 그 dir 의
+	// keychain 이름을 아는 사용자는 설정에 적으면 그대로 쓰인다.
+	//
+	// 현재 Claude Code 가 비기본 dir 에서 어떤 이름을 쓰는지는 확인하지 못했다
+	// (알아내려면 로그인을 새로 태워야 한다). 옛 규칙은 sha256(config_dir)[:8]
+	// 접미사였고 그 항목이 이 맥에 실존하지만, 지금은 기본 dir 에서 접미사 없는
+	// 이름을 쓴다 — 규칙이 바뀌었다. 추론해서 고르지 않는 이유다.
+	if c.KeychainService == "" && c.ConfigDir == defaultConfigDir() {
 		c.KeychainService = "Claude Code-credentials"
 	}
 	if c.CredentialsFile == "" {
@@ -153,6 +181,15 @@ func (c *Config) ApplyDefaults() {
 	if c.Currency == "" {
 		c.Currency = "$"
 	}
+}
+
+// defaultConfigDir is ~/.claude — Claude Code 가 손대지 않았을 때 쓰는 자리다.
+func defaultConfigDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".claude")
 }
 
 // Expand replaces a leading ~ with the home directory.
