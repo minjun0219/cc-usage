@@ -317,7 +317,12 @@ func runDoctor(args []string) error {
 	fmt.Printf("config:        %s\n", config.Path())
 	fmt.Printf("source:        %s\n", p.Source)
 	fmt.Printf("config_dir:    %s\n", p.ConfigDir)
-	fmt.Printf("keychain:      %s\n", p.KeychainService)
+	if p.KeychainService == "" {
+		// 빈 값은 설정 누락이 아니라 의도다 — 왜 건너뛰는지 화면에 적는다.
+		fmt.Println("keychain:      (건너뜀 — 비기본 config_dir, creds 파일만 봅니다)")
+	} else {
+		fmt.Printf("keychain:      %s\n", p.KeychainService)
+	}
 	fmt.Printf("creds file:    %s\n", p.CredentialsFile)
 	fmt.Printf("cache dir:     %s\n", store.Dir())
 	fmt.Printf("guard:         %v\n", p.Guard)

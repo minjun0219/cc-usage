@@ -52,7 +52,33 @@ examples/           config, settings.json 예시
 
 아직 쓰지 않는 필드: `decimal_places` · `currency`("USD") · `spend_limit_reached` · `user_disabled` · `disabled_reason`. 앞 둘은 `credit_divisor`/`currency` 설정을 없앨 근거가 되고, `spend_limit_reached`는 guard가 볼 만하다.
 
+## keychain service 이름 (2026-09-19 확인)
+
+기본 `~/.claude` 에서는 **접미사 없는 `Claude Code-credentials`** 다. `doctor` 로 token 이 실제로
+keychain 에서 읽히는 것을 확인했다(`source=keychain`).
+
+접미사가 붙은 항목(`Claude Code-credentials-28907b45` 등)이 이 맥에 **12개 실존한다.** Claude Code 가
+상황에 따라 접미사를 붙이는 것은 사실이다. **다만 접미사가 무엇의 해시인지는 알아내지 못했다** —
+keychain 메타데이터에 경로 힌트가 없고(`acct` 는 사용자명), CLI 가 Mach-O 바이너리라 문자열도 잡히지
+않는다. 알아내려면 새 config dir 로 로그인을 한 번 태워야 하는데 토큰이 새로 발급되는 부작용이 있다.
+
+**규칙을 몰라도 막히지 않는다.** `cc-usage doctor` 가 실제 keychain 을 긁어 후보를 전부 나열하므로,
+보고 `keychain_service` 에 적으면 된다. 규칙을 추론해 자동으로 고르려 들지 않는 이유가 이것이다 —
+틀린 추론으로 다른 계정의 token 을 집는 것보다 사용자가 보고 고르는 편이 낫다.
+
+### `CLAUDE_CONFIG_DIR` 는 설정값을 이긴다 (고침)
+
+`claude auth status` 를 다른 `CLAUDE_CONFIG_DIR` 로 돌리면 **`loggedIn: false`** 가 나온다 — Claude Code 는
+config dir 마다 자격 증명을 나눠 갖는다. 그래서 cc-usage 가 설정 파일의 `config_dir` 을 우선하면,
+환경변수를 바꾼 세션에서 **다른 계정의 token** 으로 API 를 부른다. 숫자가 통째로 남의 것이 되는데
+그럴듯해서 티도 안 난다. `ApplyDefaults` 가 환경변수를 우선하게 고쳤다.
+
+**그것만으로는 모자랐다.** `keychain_service` 기본값 `Claude Code-credentials` 는 접미사가 없어
+config dir 과 무관하게 같은 값이고, `token.go` 가 keychain 을 먼저 본다 — `config_dir` 을 옳게 맞춰도
+keychain 이 기본 계정 token 을 먼저 집어서 creds 파일 폴백까지 가지도 않았다. **비기본 config_dir 이면
+keychain 기본값을 주지 않는다**(건너뛰고 `<config_dir>/.credentials.json` 만 본다). 못 찾으면 숫자가 안
+나오는데, 틀린 계정의 숫자보다 낫다. 그 dir 의 keychain 이름을 아는 사용자는 설정에 적으면 그대로 쓰인다.
+
 ## 미확인 사항 (실제 계정으로 검증 필요)
 
-- `CLAUDE_CONFIG_DIR` 사용 시 keychain service 이름 규칙 (`cc-usage doctor`로 확인)
 - 크레딧으로 넘어간 뒤에도 stdin `rate_limits`가 100%로 유지되는지
