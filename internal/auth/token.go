@@ -39,12 +39,16 @@ func Load(ctx context.Context, p *config.Config) (*Token, error) {
 		}
 	}
 	var errs []string
-	if runtime.GOOS == "darwin" {
+	// 이름이 비면 건너뛴다. 비기본 config_dir 에서 기본 이름을 읽으면 다른
+	// 계정의 token 을 집기 때문에, config 가 일부러 비워 둔다.
+	if runtime.GOOS == "darwin" && p.KeychainService != "" {
 		t, err := fromKeychain(ctx, p.KeychainService)
 		if err == nil {
 			return check(t)
 		}
 		errs = append(errs, "keychain: "+err.Error())
+	} else if runtime.GOOS == "darwin" {
+		errs = append(errs, "keychain: 건너뜀 (비기본 config_dir)")
 	}
 	b, err := os.ReadFile(p.CredentialsFile)
 	if err == nil {
