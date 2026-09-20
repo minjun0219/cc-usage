@@ -249,7 +249,9 @@ func runGuard(args []string) error {
 
 	useStdin := core.UseStdin(p, &st, false, now)
 	lim := core.Merge(useStdin, nil, nil, &st, &uf, now)
-	d := core.Guard(p, lim, &uf, &allow, now)
+	// 계정 파일은 prompt 당 한 번만 읽는다 — statusline 과 달리 이 경로는 초당
+	// 두 번 돌지 않는다.
+	d := core.Guard(p, lim, &uf, &allow, account.ExtraUsageEnabled(p), now)
 	if !d.Block {
 		return nil
 	}
@@ -326,6 +328,16 @@ func runDoctor(args []string) error {
 	fmt.Printf("creds file:    %s\n", p.CredentialsFile)
 	fmt.Printf("cache dir:     %s\n", store.Dir())
 	fmt.Printf("guard:         %v\n", p.Guard)
+	// guard 가 한도 소진에서 실제로 막을지는 크레딧이 켜져 있느냐에 달렸다.
+	// usage.json 이 없을 때 그 답을 내는 것이 이 값이므로 같이 찍는다.
+	switch on := account.ExtraUsageEnabled(p); {
+	case on == nil:
+		fmt.Println("크레딧(파일):   모름 — 소진 시 guard 가 막습니다")
+	case *on:
+		fmt.Println("크레딧(파일):   켜짐 — 소진 시 guard 가 막습니다")
+	default:
+		fmt.Println("크레딧(파일):   꺼짐 — guard 가 막지 않습니다")
+	}
 	fmt.Printf("alert:         임박 %.0f%% (0이면 소진만)\n", p.Alert())
 
 	tok, err := auth.Load(context.Background(), p)

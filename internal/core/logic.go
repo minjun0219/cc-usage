@@ -299,14 +299,19 @@ type GuardDecision struct {
 	Reason string
 }
 
-func Guard(p *config.Config, lim Limits, uf *store.UsageFile, allow *store.AllowFile, now time.Time) GuardDecision {
+// Guard decides whether a prompt should be blocked.
+//
+// extraHint 는 API 를 거치지 않고 알아낸 크레딧 활성 여부(.claude.json)이고, nil 은
+// 모른다는 뜻이다. usage.json 이 아직 없는 구간만 메운다 — 관측값이 있으면 그쪽이
+// 이긴다.
+func Guard(p *config.Config, lim Limits, uf *store.UsageFile, allow *store.AllowFile, extraHint *bool, now time.Time) GuardDecision {
 	if !p.Guard || now.Before(allow.AllowUntil) {
 		return GuardDecision{}
 	}
 	hit, key := lim.Exhausted()
 	cv := Credits(p, lim, uf, now)
 	if hit {
-		if uf.Usage != nil && uf.Usage.Extra != nil && !uf.Usage.Extra.Enabled {
+		if on := creditsEnabled(uf, extraHint); on != nil && !*on {
 			return GuardDecision{} // no credits to spend; Claude Code will block by itself
 		}
 		return GuardDecision{Block: true, Reason: "사용량 한도 소진 (" + key + ") — 이 prompt부터 크레딧이 차감됩니다"}
@@ -315,4 +320,19 @@ func Guard(p *config.Config, lim Limits, uf *store.UsageFile, allow *store.Allow
 		return GuardDecision{Block: true, Reason: "최근 크레딧 소진이 감지됐습니다"}
 	}
 	return GuardDecision{}
+}
+
+// creditsEnabled merges the observed credit state with the hint. nil 은 어느
+// 쪽으로도 모른다는 뜻이고, 그때는 차단하는 쪽으로 남는다 — 한도를 넘긴 상태에서
+// "모른다" 는 곧 "차감될 수도 있다" 이고, guard 는 그것을 막으려고 있다.
+//
+// 관측값(usage.json)이 힌트를 이긴다. 힌트는 계정 파일의 스냅샷이라 크레딧을
+// 켜고 끈 직후에는 뒤처질 수 있지만, 관측값은 그 계정으로 실제 응답을 받아
+// 적은 것이다.
+func creditsEnabled(uf *store.UsageFile, hint *bool) *bool {
+	if uf.Usage != nil && uf.Usage.Extra != nil {
+		v := uf.Usage.Extra.Enabled
+		return &v
+	}
+	return hint
 }

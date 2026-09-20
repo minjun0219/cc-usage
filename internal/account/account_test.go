@@ -172,3 +172,32 @@ func TestEmailDistinguishesFailureFromEmpty(t *testing.T) {
 		t.Errorf("이메일 없는 계정: %q ok=%v", email, ok)
 	}
 }
+
+func TestExtraUsageEnabled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	cfg := &config.Config{ConfigDir: filepath.Join(home, ".claude")}
+	path := filepath.Join(home, ".claude.json")
+
+	// 파일이 없으면 모른다. 여기서 false 를 내면 guard 가 막아야 할 때 통과시킨다.
+	if got := ExtraUsageEnabled(cfg); got != nil {
+		t.Errorf("파일 없음은 nil 이어야 한다: %v", *got)
+	}
+
+	// 필드가 없는 설치(API key 인증 · 구버전)도 마찬가지로 모른다.
+	write(t, path, `{"oauthAccount":{"emailAddress":"me@example.com"}}`)
+	if got := ExtraUsageEnabled(cfg); got != nil {
+		t.Errorf("필드 없음은 nil 이어야 한다: %v", *got)
+	}
+
+	write(t, path, `{"oauthAccount":{"emailAddress":"me@example.com","hasExtraUsageEnabled":false}}`)
+	if got := ExtraUsageEnabled(cfg); got == nil || *got {
+		t.Errorf("false 를 읽지 못했다: %v", got)
+	}
+
+	write(t, path, `{"oauthAccount":{"emailAddress":"me@example.com","hasExtraUsageEnabled":true}}`)
+	if got := ExtraUsageEnabled(cfg); got == nil || !*got {
+		t.Errorf("true 를 읽지 못했다: %v", got)
+	}
+}

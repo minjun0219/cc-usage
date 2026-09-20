@@ -44,7 +44,11 @@ examples/           config, settings.json 예시
 
 **Team 계정과 개인 계정은 `organizationUuid` 로 갈리지 않는다** — 개인 계정도 이 필드를 갖는다(2026-09-18 양쪽 실측). `.claude.json` 만으로 계정을 가리려면 `oauthAccount.emailAddress` 뿐이고, 두 계정 모두 채워져 온다. 확실히 가르는 `organization_type`(`claude_team`)·`seat_tier`(`team_tier_1`)는 **`/api/oauth/profile`** 에 있는데 그건 API 호출이 필요하다 — cc-usage 는 아직 이 엔드포인트를 쓰지 않는다.
 
-**`.claude.json` 의 `oauthAccount.hasExtraUsageEnabled`** 로 크레딧 활성 여부를 API 없이 알 수 있다. 지금 guard 는 cache 가 비면 fail-open 으로 통과시키는데, 이걸 쓰면 그 구간을 줄일 수 있다. 아직 쓰지 않는다.
+**`.claude.json` 의 `oauthAccount.hasExtraUsageEnabled`** 로 크레딧 활성 여부를 API 없이 알 수 있다. **guard 가 쓴다** (`account.ExtraUsageEnabled` → `core.Guard`). `usage.json` 의 관측값이 있으면 그쪽이 이기고, 없을 때만 이 힌트가 답을 낸다.
+
+그 전에 이 문단에 적혀 있던 "cache 가 비면 fail-open 으로 통과" 는 **틀린 서술이었다** — 실제로는 `uf.Usage == nil` 이 `!Enabled` 분기를 타지 못해 **차단**했다. `source: "stdin"` 은 한도에 닿기 전까지 API 를 부르지 않아 `usage.json` 이 평소에 없으므로, 크레딧이 꺼진 계정도 소진 직후 첫 prompt 에서 "크레딧이 차감됩니다" 로 막혔다. 재현은 임시 `XDG_CONFIG_HOME`/`XDG_CACHE_HOME` 에 `five_hour.percent: 100` 인 `state.json` 을 넣고 `cc-usage guard` 를 돌리면 된다.
+
+"필드 없음" 과 `false` 는 반드시 가른다(그래서 `*bool` 이다). 같게 다루면 이 필드가 없는 설치에서 크레딧이 켜져 있어도 꺼진 것으로 단정해 **막아야 할 때 통과시킨다**.
 
 **Team 계정은 `extra_usage.is_enabled: true` 다** (2026-09-18 확인). 개인 계정의 `false`(`out_of_credits`)와 다르다 — guard 가 실제로 막을 상황은 Team 계정 쪽에 있다.
 

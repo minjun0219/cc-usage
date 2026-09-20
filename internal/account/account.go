@@ -18,10 +18,32 @@ import (
 
 // claudeConfig is the sliver of .claude.json we need. 나머지 필드는 무시한다 —
 // organizationName 같은 것은 화면에 낼 일이 없고, 들고 있을 이유도 없다.
+//
+// HasExtraUsageEnabled 가 포인터인 이유는 "필드 없음" 과 false 를 갈라야 하기
+// 때문이다. Guard 가 이 값을 보고 차단을 건너뛰므로, 둘을 같게 다루면 이 필드를
+// 쓰지 않는 설치에서 크레딧이 켜져 있어도 꺼진 것으로 단정하게 된다.
 type claudeConfig struct {
 	OAuthAccount struct {
-		EmailAddress string `json:"emailAddress"`
+		EmailAddress         string `json:"emailAddress"`
+		HasExtraUsageEnabled *bool  `json:"hasExtraUsageEnabled"`
 	} `json:"oauthAccount"`
+}
+
+// read parses the first candidate that can be read. ok is true only when a file
+// was **read and parsed** — 파일이 없거나 JSON 이 깨졌으면 false 다.
+func read(c *config.Config) (claudeConfig, bool) {
+	for _, p := range paths(c) {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var cc claudeConfig
+		if json.Unmarshal(b, &cc) != nil {
+			continue
+		}
+		return cc, true
+	}
+	return claudeConfig{}, false
 }
 
 // Email returns the logged-in account's email. ok is true only when a candidate
@@ -33,20 +55,31 @@ type claudeConfig struct {
 // 원자적으로 재작성하므로(.claude.json.lock 이 함께 보인다) 그 창에 걸리는 일이
 // 실제로 있다.
 func Email(c *config.Config) (email string, ok bool) {
-	for _, p := range paths(c) {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		var cc claudeConfig
-		if json.Unmarshal(b, &cc) != nil {
-			continue
-		}
-		// 여기까지 왔으면 계정 파일을 본 것이다. 이메일이 비어 있어도 그것이
-		// 이 계정의 사실이다 (API key 인증 등).
-		return cc.OAuthAccount.EmailAddress, true
+	cc, ok := read(c)
+	if !ok {
+		return "", false
 	}
-	return "", false
+	// 여기까지 왔으면 계정 파일을 본 것이다. 이메일이 비어 있어도 그것이
+	// 이 계정의 사실이다 (API key 인증 등).
+	return cc.OAuthAccount.EmailAddress, true
+}
+
+// ExtraUsageEnabled reports whether usage credits are turned on for the logged-in
+// account, **API 를 부르지 않고**. nil 은 모른다는 뜻이다 — 계정 파일을 못 읽었거나,
+// 읽었는데 그 필드가 없는 경우다.
+//
+// guard 가 이것을 쓴다. `source: "stdin"` 에서는 한도에 닿기 전까지 API 를 부르지
+// 않아 usage.json 이 아예 없고, 그 구간에서는 크레딧이 꺼진 계정까지 "크레딧이
+// 차감됩니다" 로 막혔다. 이 파일은 그 답을 network 없이 들고 있다.
+//
+// 이 값은 계정 파일의 스냅샷이라 크레딧을 방금 켜고 끈 직후에는 뒤처질 수 있다.
+// 그래서 usage.json 의 관측값이 있으면 그쪽이 이긴다 (core.Guard 가 그 순서를 안다).
+func ExtraUsageEnabled(c *config.Config) *bool {
+	cc, ok := read(c)
+	if !ok {
+		return nil
+	}
+	return cc.OAuthAccount.HasExtraUsageEnabled
 }
 
 // Source is which account slot this session is looking at. **파일을 읽지 않는다**
