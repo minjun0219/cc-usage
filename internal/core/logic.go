@@ -311,7 +311,7 @@ func Guard(p *config.Config, lim Limits, uf *store.UsageFile, allow *store.Allow
 	hit, key := lim.Exhausted()
 	cv := Credits(p, lim, uf, now)
 	if hit {
-		if on := creditsEnabled(uf, extraHint); on != nil && !*on {
+		if on := CreditsEnabled(uf, extraHint); on != nil && !*on {
 			return GuardDecision{} // no credits to spend; Claude Code will block by itself
 		}
 		return GuardDecision{Block: true, Reason: "사용량 한도 소진 (" + key + ") — 이 prompt부터 크레딧이 차감됩니다"}
@@ -322,14 +322,17 @@ func Guard(p *config.Config, lim Limits, uf *store.UsageFile, allow *store.Allow
 	return GuardDecision{}
 }
 
-// creditsEnabled merges the observed credit state with the hint. nil 은 어느
-// 쪽으로도 모른다는 뜻이고, 그때는 차단하는 쪽으로 남는다 — 한도를 넘긴 상태에서
-// "모른다" 는 곧 "차감될 수도 있다" 이고, guard 는 그것을 막으려고 있다.
+// CreditsEnabled merges the observed credit state with the hint. nil 은 어느
+// 쪽으로도 모른다는 뜻이고, 그때 Guard 는 차단하는 쪽으로 남는다 — 한도를 넘긴
+// 상태에서 "모른다" 는 곧 "차감될 수도 있다" 이고, guard 는 그것을 막으려고 있다.
 //
 // 관측값(usage.json)이 힌트를 이긴다. 힌트는 계정 파일의 스냅샷이라 크레딧을
 // 켜고 끈 직후에는 뒤처질 수 있지만, 관측값은 그 계정으로 실제 응답을 받아
 // 적은 것이다.
-func creditsEnabled(uf *store.UsageFile, hint *bool) *bool {
+//
+// export 되어 있는 것은 `doctor` 가 같은 답을 보여줘야 하기 때문이다. 진단이
+// 계정 파일만 보고 답하면, 관측값이 그와 다를 때 화면과 실제 동작이 어긋난다.
+func CreditsEnabled(uf *store.UsageFile, hint *bool) *bool {
 	if uf.Usage != nil && uf.Usage.Extra != nil {
 		v := uf.Usage.Extra.Enabled
 		return &v
