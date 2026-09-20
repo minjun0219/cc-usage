@@ -250,22 +250,52 @@ func TestGuard(t *testing.T) {
 	uf := &store.UsageFile{}
 	allow := &store.AllowFile{}
 
-	if d := Guard(p, lim, uf, allow, now); !d.Block || !strings.Contains(d.Reason, "5h") {
+	if d := Guard(p, lim, uf, allow, nil, now); !d.Block || !strings.Contains(d.Reason, "5h") {
 		t.Fatalf("should block unknown-credit exhaustion: %+v", d)
 	}
 	allow.AllowUntil = now.Add(time.Minute)
-	if Guard(p, lim, uf, allow, now).Block {
+	if Guard(p, lim, uf, allow, nil, now).Block {
 		t.Fatal("allow window ignored")
 	}
 	allow.AllowUntil = time.Time{}
 	uf.Usage = &store.Usage{Extra: &store.Extra{Enabled: false}}
-	if Guard(p, lim, uf, allow, now).Block {
+	if Guard(p, lim, uf, allow, nil, now).Block {
 		t.Fatal("credits disabled: nothing to guard")
 	}
 	p.Guard = false
 	uf.Usage = nil
-	if Guard(p, lim, uf, allow, now).Block {
+	if Guard(p, lim, uf, allow, nil, now).Block {
 		t.Fatal("guard disabled")
+	}
+}
+
+// usage.json 이 없는 구간에서 .claude.json 힌트가 판단을 대신한다. `source:
+// "stdin"` 은 한도에 닿기 전까지 API 를 부르지 않아 그 파일이 평소에 없다 —
+// 크레딧이 꺼진 계정이 거기서 막히던 것이 이 테스트가 고정하는 동작이다.
+func TestGuardExtraHint(t *testing.T) {
+	now := time.Now()
+	p := profile(config.SourceStdin)
+	lim := Limits{FiveHour: &store.Window{Percent: 100}}
+	allow := &store.AllowFile{}
+	off, on := false, true
+
+	if Guard(p, lim, &store.UsageFile{}, allow, &off, now).Block {
+		t.Fatal("힌트가 크레딧 꺼짐이라고 말하는데 막았다")
+	}
+	if !Guard(p, lim, &store.UsageFile{}, allow, &on, now).Block {
+		t.Fatal("힌트가 크레딧 켜짐인데 통과시켰다")
+	}
+	if !Guard(p, lim, &store.UsageFile{}, allow, nil, now).Block {
+		t.Fatal("모르면 막아야 한다")
+	}
+	// 관측값이 힌트를 이긴다 — 계정 파일은 크레딧을 끈 직후 뒤처질 수 있다.
+	observed := &store.UsageFile{Usage: &store.Usage{Extra: &store.Extra{Enabled: true}}}
+	if !Guard(p, lim, observed, allow, &off, now).Block {
+		t.Fatal("관측값(켜짐)이 힌트(꺼짐)에 졌다")
+	}
+	observedOff := &store.UsageFile{Usage: &store.Usage{Extra: &store.Extra{Enabled: false}}}
+	if Guard(p, lim, observedOff, allow, &on, now).Block {
+		t.Fatal("관측값(꺼짐)이 힌트(켜짐)에 졌다")
 	}
 }
 

@@ -249,7 +249,9 @@ func runGuard(args []string) error {
 
 	useStdin := core.UseStdin(p, &st, false, now)
 	lim := core.Merge(useStdin, nil, nil, &st, &uf, now)
-	d := core.Guard(p, lim, &uf, &allow, now)
+	// 계정 파일은 prompt 당 한 번만 읽는다 — statusline 과 달리 이 경로는 초당
+	// 두 번 돌지 않는다.
+	d := core.Guard(p, lim, &uf, &allow, account.ExtraUsageEnabled(p), now)
 	if !d.Block {
 		return nil
 	}
@@ -326,6 +328,37 @@ func runDoctor(args []string) error {
 	fmt.Printf("creds file:    %s\n", p.CredentialsFile)
 	fmt.Printf("cache dir:     %s\n", store.Dir())
 	fmt.Printf("guard:         %v\n", p.Guard)
+
+	var st store.StateFile
+	var uf store.UsageFile
+	_ = store.Read(store.StatePath(), &st)
+	_ = store.Read(store.UsagePath(), &uf)
+
+	// guard 가 한도 소진에서 실제로 막을지는 크레딧이 켜져 있느냐에 달렸다.
+	// **Guard 와 같은 함수로 계산한다** — 여기서 계정 파일만 보면, 관측값이 그와
+	// 다를 때(크레딧을 방금 켜고 끈 직후) 화면이 실제 동작과 반대를 말한다.
+	src := ".claude.json"
+	if uf.Usage != nil && uf.Usage.Extra != nil {
+		src = "usage.json"
+	}
+	state, blocks := "모름", true
+	switch on := core.CreditsEnabled(&uf, account.ExtraUsageEnabled(p)); {
+	case on == nil:
+		src = "-" // 어느 쪽도 답을 내지 못했다
+	case *on:
+		state = "켜짐"
+	default:
+		state, blocks = "꺼짐", false
+	}
+	// guard 가 꺼져 있으면 막고 안 막고를 말하지 않는다 — 어차피 아무것도 막지 않는다.
+	switch {
+	case !p.Guard:
+		fmt.Printf("크레딧:        %s (%s)\n", state, src)
+	case blocks:
+		fmt.Printf("크레딧:        %s (%s) — 소진 시 guard 가 막습니다\n", state, src)
+	default:
+		fmt.Printf("크레딧:        %s (%s) — guard 가 막지 않습니다\n", state, src)
+	}
 	fmt.Printf("alert:         임박 %.0f%% (0이면 소진만)\n", p.Alert())
 
 	tok, err := auth.Load(context.Background(), p)
@@ -342,10 +375,6 @@ func runDoctor(args []string) error {
 		fmt.Printf("token:         %v\n", err)
 	}
 
-	var st store.StateFile
-	var uf store.UsageFile
-	_ = store.Read(store.StatePath(), &st)
-	_ = store.Read(store.UsagePath(), &uf)
 	b, _ := json.MarshalIndent(struct {
 		State store.StateFile `json:"state"`
 		Usage store.UsageFile `json:"usage"`
