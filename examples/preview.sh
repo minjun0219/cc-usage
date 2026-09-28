@@ -56,7 +56,7 @@ R5=$((NOW + 4800))
 R7=$((NOW + 187000))
 
 show "평소" \
- "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5},\"seven_day\":{\"used_percentage\":15,\"resets_at\":$R7}}}"
+ "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"effort\":{\"level\":\"high\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5},\"seven_day\":{\"used_percentage\":15,\"resets_at\":$R7}}}"
 
 show "ctx·5h 높음 (경보 전)" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":88},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":72,\"resets_at\":$R5},\"seven_day\":{\"used_percentage\":55,\"resets_at\":$R7}}}"
@@ -76,10 +76,10 @@ show "빈 payload — 직전 stdin 값을 cache에서 그대로 쓴다" ""
 # 배지는 붙는 자리와 줄바꿈 판단을 바꾼다. 테스트로는 폭만 잡히고 색·간격은
 # 눈으로 봐야 하므로, 경계 상태를 여기 고정해 둔다.
 printf '\n\033[1m── 배지 없음 (같은 상태 비교용)\033[0m\n'
-CC_USAGE_CONFIG="$DIR/config-nobadge.json" sh -c "printf '%s' '{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}' | $BIN statusline"
+CC_USAGE_CONFIG="$DIR/config-nobadge.json" sh -c "printf '%s' '{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"effort\":{\"level\":\"high\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}' | $BIN statusline"
 
 show "배지 + 평소" \
- "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
+ "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"effort\":{\"level\":\"high\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
 
 show "배지 + 경보 (배지와 빨간 배지가 한 줄에)" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":93,\"resets_at\":$R5}}}"
@@ -107,6 +107,6 @@ cat > "$XDG_CACHE_HOME/cc-usage/usage.json" <<JSON
 JSON
 
 show "Team(api) — 한도 전에도 크레딧" \
- "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"}}"
+ "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"effort\":{\"level\":\"high\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"}}"
 rm -rf "$API_DIR"
 printf '\n'

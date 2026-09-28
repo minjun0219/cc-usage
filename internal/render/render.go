@@ -130,6 +130,7 @@ type View struct {
 	Git        *git.Status   // nil이면 git repo가 아니거나 조회 실패 — 세그먼트 생략
 	Badge      *config.Badge // nil이면 표시 없음 (목록에 없는 계정)
 	Model      string
+	Effort     string // effort.level (빈 값이면 생략)
 	ContextPct *float64
 	Limits     core.Limits
 	Alert      core.Alert
@@ -142,8 +143,8 @@ type View struct {
 // row, and an optional credit row.
 func Lines(v View, s Style) []string {
 	var parts []string
-	if v.Model != "" {
-		parts = append(parts, s.c(magenta, v.Model))
+	if m := modelText(v, s); m != "" {
+		parts = append(parts, m)
 	}
 	if v.ContextPct != nil {
 		parts = append(parts, "ctx "+s.c(s.ctxColor(*v.ContextPct), fmt.Sprintf("%.0f%%", *v.ContextPct)))
@@ -208,6 +209,21 @@ func Lines(v View, s Style) []string {
 		lines = append(lines, s.c(dim, "[cc-usage]"))
 	}
 	return lines
+}
+
+// modelText 는 모델 이름 뒤에 effort 를 흐리게 붙인다. effort 는 모델의
+// 속성이라 별도 세그먼트(" · ")로 떼지 않는다 — 떼면 ctx·5h 와 같은 급의
+// 지표처럼 읽힌다. 색도 주지 않는다: 높다고 위험한 값이 아니다.
+func modelText(v View, s Style) string {
+	m := s.c(magenta, v.Model)
+	e := s.c(dim, v.Effort)
+	switch {
+	case m == "":
+		return e
+	case e == "":
+		return m
+	}
+	return m + " " + e
 }
 
 // badgeText marks which account is logged in. 이모지가 있으면 그것만 쓰고,
