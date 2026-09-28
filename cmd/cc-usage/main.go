@@ -157,6 +157,7 @@ func runStatusline(args []string) error {
 		Git:        gs,
 		Badge:      badge,
 		Model:      in.Model.DisplayName,
+		Effort:     in.Effort.Level,
 		ContextPct: in.ContextWindow.UsedPercentage,
 		Limits:     lim,
 		Alert:      alert,

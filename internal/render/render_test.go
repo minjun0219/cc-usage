@@ -614,3 +614,27 @@ func TestTextPresentationSymbolsStayOneColumn(t *testing.T) {
 		}
 	}
 }
+
+func TestLinesEffort(t *testing.T) {
+	c := &config.Config{}
+	c.ApplyDefaults()
+	row := func(model, effort string) string {
+		// 데이터 없음 안내 등 뒤 세그먼트는 보지 않는다 — 첫 세그먼트만.
+		row := Lines(View{Config: c, Model: model, Effort: effort, Usage: &store.UsageFile{}, Now: time.Now()}, Style{})[0]
+		return strings.Split(row, " · ")[0]
+	}
+	if got := row("Opus 5", "high"); got != "Opus 5 high" {
+		t.Errorf("model+effort: %q", got)
+	}
+	// effort 가 없는 모델 — 뒤에 공백이 남으면 안 된다.
+	if got := row("Opus 5", ""); got != "Opus 5" {
+		t.Errorf("model only: %q", got)
+	}
+	if got := row("", "xhigh"); got != "xhigh" {
+		t.Errorf("effort only: %q", got)
+	}
+	// 색이 켜져 있어도 빈 쪽의 색 코드가 새지 않는다.
+	if got := modelText(View{Model: "Opus 5"}, Style{Color: true}); got != magenta+"Opus 5"+reset {
+		t.Errorf("colored model only: %q", got)
+	}
+}

@@ -421,3 +421,15 @@ func TestAccountKeyIncludesSource(t *testing.T) {
 		t.Errorf("같은 자리면 캐시를 쓴다: %q", got)
 	}
 }
+
+func TestParseInputEffort(t *testing.T) {
+	in, err := ParseInput([]byte(`{"model":{"display_name":"Opus"},"effort":{"level":"xhigh"}}`))
+	if err != nil || in.Effort.Level != "xhigh" {
+		t.Errorf("got %+v err=%v", in, err)
+	}
+	// effort 를 지원하지 않는 모델에서는 필드 자체가 없다.
+	in, err = ParseInput([]byte(`{"model":{"display_name":"Haiku"}}`))
+	if err != nil || in.Effort.Level != "" {
+		t.Errorf("got %+v err=%v", in, err)
+	}
+}

@@ -15,6 +15,11 @@ type Input struct {
 	Model     struct {
 		DisplayName string `json:"display_name"`
 	} `json:"model"`
+	// Effort 는 모델이 effort 파라미터를 지원할 때만 온다. /effort 로 세션 중에
+	// 바꾼 값도 반영된다(공식 문서). ultracode 는 따로 오지 않고 xhigh 로 온다.
+	Effort struct {
+		Level string `json:"level"`
+	} `json:"effort"`
 	ContextWindow struct {
 		UsedPercentage *float64 `json:"used_percentage"`
 	} `json:"context_window"`

@@ -4,14 +4,14 @@ Claude Code statusline + 크레딧 guard. 계정 하나를 상정합니다 — �
 
 ```
 ~/dev/workspaces/cc-usage · ⎇ main +3 !5 ⇡1
-Sonnet · ctx 40% · 5h 70% (↻18:00) · 💳 $38.40 ($50.00)
+Sonnet high · ctx 40% · 5h 70% (↻18:00) · 💳 $38.40 ($50.00)
 ```
 
 7d는 여유로우면 나오지 않고, 한도가 소진되면 크레딧이 제 줄로 내려갑니다.
 
 ```
 ~/dev/workspaces/cc-usage · ⎇ main +3 !5 ⇡1
-Sonnet · ctx 40% · 7d 25% (2d 4h) · 5h 0% (↻18:00)
+Sonnet high · ctx 40% · 7d 25% (2d 4h) · 5h 0% (↻18:00)
 💳 $38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
 ```
 
