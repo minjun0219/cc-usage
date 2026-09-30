@@ -4,7 +4,7 @@ Claude Code statusline + 크레딧 guard. 계정 하나를 상정합니다 — �
 
 ```
 ~/dev/workspaces/cc-usage · ⎇ main +3 !5 ⇡1
-Sonnet high · ctx 40% · 5h 70% (↻18:00) · 💳 $38.40 ($50.00)
+Sonnet high · ctx 40% · 5h 70% (↻18:00) · $38.40 ($50.00)
 ```
 
 7d는 여유로우면 나오지 않고, 한도가 소진되면 크레딧이 제 줄로 내려갑니다.
@@ -12,7 +12,7 @@ Sonnet high · ctx 40% · 5h 70% (↻18:00) · 💳 $38.40 ($50.00)
 ```
 ~/dev/workspaces/cc-usage · ⎇ main +3 !5 ⇡1
 Sonnet high · ctx 40% · 7d 25% (2d 4h) · 5h 0% (↻18:00)
-💳 $38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
+$38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
 ```
 
 > ⚠️ Team 계정의 5h/7d 및 크레딧 정보는 비공식 `GET https://api.anthropic.com/api/oauth/usage` 에 의존합니다. 응답 구조는 예고 없이 바뀔 수 있고, rate limit이 매우 낮습니다.

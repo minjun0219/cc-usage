@@ -450,9 +450,9 @@ func creditLine(v View, s Style) string {
 	cur := v.Config.Currency
 	if !cv.Enabled {
 		if v.Usage.Usage != nil && v.Usage.Usage.Extra != nil && !v.Usage.Usage.Extra.Enabled {
-			return s.c(dim, "💳 크레딧 비활성 — 한도 reset까지 대기")
+			return s.c(dim, "크레딧 비활성 — 한도 reset까지 대기")
 		}
-		return s.c(yellow, "💳 한도 소진 · 크레딧 조회 중…")
+		return s.c(yellow, "한도 소진 · 크레딧 조회 중…")
 	}
 	// 남은 금액을 낸다 — 5h·7d 가 남은 비율인데 크레딧만 쓴 금액이면 방향이 엇갈려
 	// 읽는 사람이 뒤집어 본다. 색도 한도 창과 같은 규칙으로 골라서, 90% 를 쓴 상태가
@@ -463,7 +463,7 @@ func creditLine(v View, s Style) string {
 		amount = money(cur, *cv.Limit-cv.Used)
 		tone = s.pctColor(cv.Used / *cv.Limit * 100)
 	}
-	t := s.c(dim, "💳") + " " + s.c(tone, amount)
+	t := s.c(tone, amount)
 	// 한도는 괄호로 감싼다 — 한도 창의 "86% (↻14:40)" 과 같은 꼴이라 값 뒤의
 	// 괄호는 부가 정보라는 규칙이 줄 전체에서 한결같아진다.
 	//
