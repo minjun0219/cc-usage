@@ -27,25 +27,25 @@ import (
 
 var version = "dev"
 
-const usage = `cc-usage — Claude Code statusline / 크레딧 guard
-
-사용법:
-  cc-usage statusline          statusLine command (stdin JSON → stdout)
-  cc-usage guard               UserPromptSubmit hook (한도 소진 시 exit 2)
-  cc-usage allow [DURATION|off]   guard 일시 해제 (기본 30m)
-  cc-usage refresh             usage API 1회 조회 (statusline이 자동 호출)
-  cc-usage probe               usage API 원본 응답 출력 (필드 확인용)
-  cc-usage doctor              설정/token/cache/keychain 진단
-  cc-usage update [--check]    소스를 받아 다시 설치 (--check: 뒤처졌는지만 확인)
-  cc-usage version
-`
-
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
+		fmt.Fprint(os.Stderr, helpText())
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
+	// `<명령> --help` 는 flag 에러가 아니라 도움말이다. 명령마다 flagset 이 달라
+	// 각자 처리하면 "flag: help requested" 로 exit 1 하는 것이 섞인다.
+	if len(args) > 0 && isHelp(args[0]) {
+		switch cmd {
+		case "statusline":
+			fmt.Print(statuslineHelpText())
+		case "config":
+			_ = runConfig(nil)
+		default:
+			fmt.Print(helpText())
+		}
+		return
+	}
 	var err error
 	switch cmd {
 	case "statusline":
@@ -60,14 +60,16 @@ func main() {
 		err = runProbe(args)
 	case "doctor":
 		err = runDoctor(args)
+	case "config":
+		err = runConfig(args)
 	case "update":
 		err = runUpdate(args)
 	case "version", "--version", "-v":
 		fmt.Println(version)
 	case "help", "--help", "-h":
-		fmt.Print(usage)
+		fmt.Print(helpText())
 	default:
-		fmt.Fprint(os.Stderr, usage)
+		fmt.Fprint(os.Stderr, helpText())
 		os.Exit(2)
 	}
 	if err != nil {
@@ -309,7 +311,12 @@ func runProbe(args []string) error {
 }
 
 func runDoctor(args []string) error {
-	p, _, err := loadConfig("doctor", args)
+	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	sessionID := fs.String("session-id", "", "extra_commands 의 {{session_id}} 에 넣을 값")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	p, err := config.Load()
 	if err != nil {
 		return err
 	}
@@ -375,10 +382,36 @@ func runDoctor(args []string) error {
 		fmt.Printf("token:         %v\n", err)
 	}
 
+	printExtras(p.ExtraCommands, *sessionID)
+
 	b, _ := json.MarshalIndent(struct {
 		State store.StateFile `json:"state"`
 		Usage store.UsageFile `json:"usage"`
 	}{st, uf}, "", "  ")
 	fmt.Println(string(b))
 	return nil
+}
+
+// printExtras runs each extra command the way statusline would and says what
+// happened. statusline 은 실패를 조용히 삼키므로 "왜 안 붙는가" 는 여기서만 보인다.
+//
+// doctor 에는 Claude Code 세션이 없다 — {{cwd}} 는 지금 디렉터리로 채우고,
+// {{session_id}} 는 --session-id 로 받지 않으면 비워 둔다(그 명령은 statusline 과
+// 똑같이 건너뛴다고 나온다).
+func printExtras(cmds []config.ExtraCommand, sessionID string) {
+	if len(cmds) == 0 {
+		fmt.Println("extra_commands: 없음 (다른 도구 줄을 붙이는 법: cc-usage config)")
+		return
+	}
+	cwd, _ := os.Getwd()
+	sid := sessionID
+	if sid == "" {
+		sid = "(비어 있음 — --session-id 로 채운다)"
+	}
+	fmt.Printf("extra_commands: %d개  cwd=%s  session_id=%s\n", len(cmds), cwd, sid)
+	res := extra.Probe(context.Background(), cmds, extra.Vars{SessionID: sessionID, Cwd: cwd})
+	for i, r := range res {
+		fmt.Printf("  [%d] %s\n", i+1, strings.Join(cmds[i].Command, " "))
+		fmt.Printf("      %s\n", extra.Describe(r, cmds[i].Timeout()))
+	}
 }
