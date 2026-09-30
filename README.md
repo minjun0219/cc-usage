@@ -190,6 +190,21 @@ cc-usage가 모르는 세그먼트(로컬 위임 표시, todo 보드 등)는 코
 - 항목들은 병렬로 실행되고, 출력은 설정에 적은 순서대로 붙습니다.
 - 여기서 무엇을 부를지는 전적으로 이 설정 파일에만 있습니다. cc-usage 코드에는 `my-statusline-tool`도 보드 데몬도 등장하지 않습니다.
 
+statusline은 실패를 조용히 삼키므로, 줄이 안 붙으면 `cc-usage doctor`로 봅니다. 각 항목을 statusline과 같은 경로로 한 번씩 돌려 결과를 가릅니다:
+
+```
+extra_commands: 2개  cwd=/Users/me/project  session_id=(비어 있음 — --session-id 로 채운다)
+  [1] my-statusline-tool line -s {{session_id}}
+      건너뜀 — {{session_id}} 가 비어 있다
+  [2] curl -sf --get --data-urlencode cwd={{cwd}} http://127.0.0.1:PORT/api/statusline
+      = curl -sf --get --data-urlencode cwd=/Users/me/project http://127.0.0.1:PORT/api/statusline
+      비정상 종료 — exit status 7
+```
+
+placeholder가 있던 항목은 `=` 줄에 치환된 argv를 함께 보여 줍니다. 결과는 `ok`(첫 줄 표시) / `출력 없음` / `건너뜀` / `미설치` / `타임아웃` / `비정상 종료`(stderr 첫 줄) 중 하나입니다. doctor에는 Claude Code 세션이 없으므로 `{{cwd}}`는 지금 디렉터리로 채우고, `{{session_id}}`는 `--session-id`로 줄 때만 채웁니다.
+
+같은 설명이 바이너리에도 있습니다 — `cc-usage --help`, `cc-usage statusline --help`, `cc-usage config`. 설정하는 쪽(사람이든 에이전트든)은 repo 없이 바이너리만 만나는 경우가 많아서입니다.
+
 ### 2. keychain 항목 확인 (macOS)
 
 ```bash
@@ -251,10 +266,16 @@ cc-usage guard
 cc-usage allow [DURATION|off]
 cc-usage refresh
 cc-usage probe
-cc-usage doctor
+cc-usage doctor [--session-id ID]
+cc-usage config
 cc-usage update [--check]
 cc-usage version
 ```
+
+- `cc-usage --help` — 명령 목록 + 설정 파일 경로 + `extra_commands` 사용법
+- `cc-usage <명령> --help` — 명령별 도움말 (지금은 `statusline`만 따로 있고 나머지는 전체 도움말)
+- `cc-usage config` — 설정 파일 경로와 전체 필드 (이 README의 필드 표와 같은 내용)
+- `cc-usage doctor` — 설정·token·cache·keychain과 `extra_commands` 항목별 실행 결과
 
 statusline은 stdout이 파이프라 `tput`·ioctl로 터미널 폭을 알 수 없습니다. Claude Code가 `COLUMNS`·`LINES`를 넣어 주므로 그걸 읽습니다. 표시 폭 계산은 ANSI를 걷어내고 한글·이모지를 2칸으로 세는데, 표준 라이브러리에 wcwidth가 없어 필요한 구간만 담은 근사입니다(`internal/render/width.go`).
 
