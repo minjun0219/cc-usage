@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -36,14 +37,7 @@ func main() {
 	// `<명령> --help` 는 flag 에러가 아니라 도움말이다. 명령마다 flagset 이 달라
 	// 각자 처리하면 "flag: help requested" 로 exit 1 하는 것이 섞인다.
 	if len(args) > 0 && isHelp(args[0]) {
-		switch cmd {
-		case "statusline":
-			fmt.Print(statuslineHelpText())
-		case "config":
-			_ = runConfig(nil)
-		default:
-			fmt.Print(helpText())
-		}
+		printHelp(cmd)
 		return
 	}
 	var err error
@@ -67,7 +61,12 @@ func main() {
 	case "version", "--version", "-v":
 		fmt.Println(version)
 	case "help", "--help", "-h":
-		fmt.Print(helpText())
+		// `cc-usage help statusline` 도 `cc-usage statusline --help` 와 같게.
+		if len(args) > 0 {
+			printHelp(args[0])
+		} else {
+			fmt.Print(helpText())
+		}
 	default:
 		fmt.Fprint(os.Stderr, helpText())
 		os.Exit(2)
@@ -313,7 +312,7 @@ func runProbe(args []string) error {
 func runDoctor(args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	sessionID := fs.String("session-id", "", "extra_commands 의 {{session_id}} 에 넣을 값")
-	if err := fs.Parse(args); err != nil {
+	if help, err := parseFlags(fs, args); help || err != nil {
 		return err
 	}
 	p, err := config.Load()
@@ -412,6 +411,10 @@ func printExtras(cmds []config.ExtraCommand, sessionID string) {
 	res := extra.Probe(context.Background(), cmds, extra.Vars{SessionID: sessionID, Cwd: cwd})
 	for i, r := range res {
 		fmt.Printf("  [%d] %s\n", i+1, strings.Join(cmds[i].Command, " "))
+		// 치환 결과가 원인일 때가 있다 — placeholder 가 있었으면 실제 argv 도 보인다.
+		if r.Argv != nil && !slices.Equal(r.Argv, cmds[i].Command) {
+			fmt.Printf("      = %s\n", strings.Join(r.Argv, " "))
+		}
 		fmt.Printf("      %s\n", extra.Describe(r, cmds[i].Timeout()))
 	}
 }

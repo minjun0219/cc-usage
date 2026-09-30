@@ -25,7 +25,7 @@ var repoPath = ""
 func runUpdate(args []string) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	check := fs.Bool("check", false, "받지 않고 뒤처졌는지만 본다")
-	if err := fs.Parse(args); err != nil {
+	if help, err := parseFlags(fs, args); help || err != nil {
 		return err
 	}
 	if repoPath == "" {

@@ -73,9 +73,10 @@ func TestProbeSaysWhyEachCommandIsMissing(t *testing.T) {
 		{Command: []string{"/no/such/path/xyz"}},
 		{Command: []string{"x", "{{session_id}}"}},
 		{},
+		{Command: []string{"sh", "-c", "sleep 5 & echo hi"}, TimeoutMS: 3000}, // 자식이 stdout 을 붙잡음
 	}
 	got := Probe(context.Background(), cmds, Vars{Cwd: "/tmp"})
-	want := []Status{OK, Empty, Failed, Timeout, NotFound, NotFound, Skipped, Skipped}
+	want := []Status{OK, Empty, Failed, Timeout, NotFound, NotFound, Skipped, Skipped, Failed}
 	for i, w := range want {
 		if got[i].Status != w {
 			t.Errorf("[%d] status %v, want %v (%+v)", i, got[i].Status, w, got[i])
@@ -87,7 +88,7 @@ func TestProbeSaysWhyEachCommandIsMissing(t *testing.T) {
 	if got[6].Missing != "{{session_id}}" {
 		t.Errorf("비어 있던 placeholder 를 말해야 한다: %q", got[6].Missing)
 	}
-	for i, frag := range []string{"ok", "출력 없음", "nope", "타임아웃", "미설치", "미설치", "{{session_id}}", "command 가 비어"} {
+	for i, frag := range []string{"ok", "출력 없음", "nope", "타임아웃", "미설치", "미설치", "{{session_id}}", "command 가 비어", "stdout 을 붙잡고"} {
 		if d := Describe(got[i], cmds[i].Timeout()); !strings.Contains(d, frag) {
 			t.Errorf("[%d] Describe = %q, want %q 포함", i, d, frag)
 		}

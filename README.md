@@ -196,11 +196,12 @@ statusline은 실패를 조용히 삼키므로, 줄이 안 붙으면 `cc-usage d
 extra_commands: 2개  cwd=/Users/me/project  session_id=(비어 있음 — --session-id 로 채운다)
   [1] my-statusline-tool line -s {{session_id}}
       건너뜀 — {{session_id}} 가 비어 있다
-  [2] curl -sf --get --data-urlencode cwd={{cwd}} ... http://127.0.0.1:PORT/api/statusline
+  [2] curl -sf --get --data-urlencode cwd={{cwd}} http://127.0.0.1:PORT/api/statusline
+      = curl -sf --get --data-urlencode cwd=/Users/me/project http://127.0.0.1:PORT/api/statusline
       비정상 종료 — exit status 7
 ```
 
-결과는 `ok`(첫 줄 표시) / `출력 없음` / `건너뜀` / `미설치` / `타임아웃` / `비정상 종료`(stderr 첫 줄) 중 하나입니다. doctor에는 Claude Code 세션이 없으므로 `{{cwd}}`는 지금 디렉터리로 채우고, `{{session_id}}`는 `--session-id`로 줄 때만 채웁니다.
+placeholder가 있던 항목은 `=` 줄에 치환된 argv를 함께 보여 줍니다. 결과는 `ok`(첫 줄 표시) / `출력 없음` / `건너뜀` / `미설치` / `타임아웃` / `비정상 종료`(stderr 첫 줄) 중 하나입니다. doctor에는 Claude Code 세션이 없으므로 `{{cwd}}`는 지금 디렉터리로 채우고, `{{session_id}}`는 `--session-id`로 줄 때만 채웁니다.
 
 같은 설명이 바이너리에도 있습니다 — `cc-usage --help`, `cc-usage statusline --help`, `cc-usage config`. 설정하는 쪽(사람이든 에이전트든)은 repo 없이 바이너리만 만나는 경우가 많아서입니다.
 

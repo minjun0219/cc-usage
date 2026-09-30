@@ -103,9 +103,13 @@ func run(ctx context.Context, c config.ExtraCommand, argv []string) Result {
 	var ee *exec.ExitError
 	switch {
 	// 타임아웃을 먼저 본다. 그룹째 죽인 결과는 signal 종료(ExitError)로도
-	// 오므로, 순서를 바꾸면 타임아웃이 "비정상 종료" 로 읽힌다.
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+	// 오므로, 순서를 바꾸면 타임아웃이 "비정상 종료" 로 읽힌다. err 가 없으면
+	// 마감 직후에 성공한 것이라 타임아웃이 아니다 — 줄을 버리지 않는다.
+	case err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
 		r.Status = Timeout
+	case errors.Is(err, exec.ErrWaitDelay):
+		// 직접 프로세스는 끝났는데 자식이 stdout 을 물려받아 붙잡고 있었다.
+		r.Status, r.Err = Failed, errors.New("자식 프로세스가 stdout 을 붙잡고 있다 (백그라운드로 띄운 것이 있는가?)")
 	case errors.Is(err, exec.ErrNotFound), errors.Is(err, fs.ErrNotExist):
 		r.Status, r.Err = NotFound, err
 	case errors.As(err, &ee):

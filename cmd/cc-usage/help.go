@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -65,7 +67,7 @@ func configSection() string {
 	default:
 		fmt.Fprintf(&b, "  (%v)", err)
 	}
-	b.WriteString("\n  기본 ~/.config/cc-usage/config.json. $CC_USAGE_CONFIG 로 바꿀 수 있다.\n")
+	b.WriteString("\n  기본 ~/.config/cc-usage/config.json ($XDG_CONFIG_HOME 을 따른다). $CC_USAGE_CONFIG 로 바꿀 수 있다.\n")
 	b.WriteString("  전체 필드: cc-usage config")
 	if repoPath != "" {
 		fmt.Fprintf(&b, "  ·  README: %s/README.md", repoPath)
@@ -127,6 +129,33 @@ func runConfig(args []string) error {
 	}
 	fmt.Print(configSection() + "\n" + configFields + "\n" + extraHelp)
 	return nil
+}
+
+// printHelp prints cmd's help — 전용 도움말이 있는 명령은 그것을, 나머지는 전체를.
+func printHelp(cmd string) {
+	switch cmd {
+	case "statusline":
+		fmt.Print(statuslineHelpText())
+	case "config":
+		_ = runConfig(nil)
+	default:
+		fmt.Print(helpText())
+	}
+}
+
+// parseFlags parses args and reports whether help was asked for anywhere in them
+// (`doctor --session-id x --help` 처럼 첫 인자가 아닐 때). flag 패키지의 자체
+// Usage 출력은 끈다 — 도움말은 printHelp 한 곳에서 낸다.
+func parseFlags(fs *flag.FlagSet, args []string) (help bool, err error) {
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			printHelp(fs.Name())
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
 }
 
 func isHelp(a string) bool {
