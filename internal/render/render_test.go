@@ -183,7 +183,7 @@ func TestCreditRowPlacement(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("여유에서는 크레딧이 상태 줄에 붙어야 한다: %q", lines)
 	}
-	if !strings.Contains(lines[0], "5h 70%") || !strings.Contains(lines[0], "💳 $38.40") {
+	if !strings.Contains(lines[0], "5h 70%") || !strings.Contains(lines[0], "$38.40") {
 		t.Errorf("한 줄에 둘 다 있어야 한다: %q", lines[0])
 	}
 
@@ -194,7 +194,7 @@ func TestCreditRowPlacement(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("소진에서는 크레딧이 제 줄을 가져야 한다: %q", lines)
 	}
-	if strings.Contains(lines[0], "💳") || !strings.Contains(lines[1], "💳") {
+	if strings.Contains(lines[0], "$38.40") || !strings.Contains(lines[1], "$38.40") {
 		t.Errorf("크레딧은 둘째 줄이어야 한다: %q", lines)
 	}
 }
@@ -204,7 +204,7 @@ func TestDisplayWidth(t *testing.T) {
 		"":                              0,
 		"5h 70%":                        6,
 		"\033[32m70%\033[0m":            3,  // ANSI 는 폭이 없다
-		"💳 $11.60":                      9,  // 이모지 2 + 공백 1 + "$11.60" 6
+		"🏢 $11.60":                      9,  // 이모지 2 + 공백 1 + "$11.60" 6
 		"크레딧 소진 중":                      14, // 한글 6자 × 2 + 공백 2
 		"\033[90m(1h 20m→10:17)\033[0m": 14, // → 는 1칸
 	} {
@@ -238,7 +238,7 @@ func TestCreditFallsBelowWhenTooWide(t *testing.T) {
 		t.Errorf("넓으면 한 줄이어야 한다: %q", wide)
 	}
 	narrow := Lines(view, Style{Width: 30})
-	if len(narrow) != 2 || !strings.Contains(narrow[1], "💳") {
+	if len(narrow) != 2 || !strings.Contains(narrow[1], "$38.40") {
 		t.Errorf("좁으면 크레딧이 내려가야 한다: %q", narrow)
 	}
 	unknown := Lines(view, Style{}) // COLUMNS 없음 → 폭 판단 생략
@@ -351,14 +351,14 @@ func TestCreditAmountSaysWhichDirection(t *testing.T) {
 	}
 	withLimit := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
 		Extra: &store.Extra{Enabled: true, UsedCredits: &used, MonthlyLimit: &limit}}}
-	if got := line(withLimit); got != "💳 $90.17 ($100)" {
+	if got := line(withLimit); got != "$90.17 ($100)" {
 		t.Errorf("한도가 있으면 남은 금액: %q", got)
 	}
 	// monthly_limit 은 optional 이다. 없으면 남은 금액을 낼 수 없으므로 쓴 금액이
 	// 나가는데, 같은 서식이면 남은 금액으로 읽힌다 — 무엇인지 밝혀야 한다.
 	noLimit := &store.UsageFile{Usage: &store.Usage{FetchedAt: now,
 		Extra: &store.Extra{Enabled: true, UsedCredits: &used}}}
-	if got := line(noLimit); got != "💳 $9.83 사용" {
+	if got := line(noLimit); got != "$9.83 사용" {
 		t.Errorf("한도가 없으면 쓴 금액임을 밝힌다: %q", got)
 	}
 }
@@ -531,7 +531,7 @@ func TestBadgeSurvivesEmptyRow(t *testing.T) {
 
 func TestBadgeNeverLooksLikeSegment(t *testing.T) {
 	// 배지는 머리표라 구분자를 붙이지 않는다. 나머지가 다 비고 크레딧만 남는
-	// 렌더에서 "🏢 · 💳 …" 가 되면 배지가 세그먼트처럼 보인다.
+	// 렌더에서 "🏢 · $…" 가 되면 배지가 세그먼트처럼 보인다.
 	now := time.Now()
 	cfg := &config.Config{}
 	cfg.ApplyDefaults()
@@ -544,7 +544,7 @@ func TestBadgeNeverLooksLikeSegment(t *testing.T) {
 	if strings.Contains(lines[0], "🏢 · ") {
 		t.Errorf("배지 뒤에 구분자가 붙었다: %q", lines[0])
 	}
-	if !strings.HasPrefix(lines[0], "🏢 💳") {
+	if !strings.HasPrefix(lines[0], "🏢 $") {
 		t.Errorf("배지 + 공백 + 크레딧: %q", lines[0])
 	}
 }
