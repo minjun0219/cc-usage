@@ -128,8 +128,11 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 
 `agy`의 statusLine도 같은 꼴의 JSON(`model`·`workspace.current_dir`·`context_window`)을 stdin으로 줍니다. 거기에는 Claude 계정의 한도가 없으므로 `--source none`으로 부릅니다 — 경로·git 줄과 모델·ctx만 나오고, token·API·cache는 일절 보지 않습니다.
 
+agy 안에서 `/statusline cc-usage statusline --source none`을 치면 `~/.gemini/antigravity-cli/settings.json`에 아래가 저장됩니다(1.2.14 실측). 파일을 직접 고쳐도 같습니다.
+
 ```json
 "statusLine": {
+  "type": "command",
   "command": "cc-usage statusline --source none"
 }
 ```
