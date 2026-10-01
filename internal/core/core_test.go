@@ -48,6 +48,40 @@ func TestParseInputWorkspace(t *testing.T) {
 	}
 }
 
+func TestInputDirFallsBackToCwd(t *testing.T) {
+	cases := []struct {
+		name, raw, want string
+	}{
+		{"current_dir 우선", `{"cwd":"/a","workspace":{"current_dir":"/b"}}`, "/b"},
+		{"current_dir 없으면 cwd", `{"cwd":"/a"}`, "/a"},
+		{"current_dir 빈 문자열이면 cwd", `{"cwd":"/a","workspace":{"current_dir":""}}`, "/a"},
+		{"둘 다 없음", `{}`, ""},
+	}
+	for _, c := range cases {
+		in, _ := ParseInput([]byte(c.raw))
+		if got := in.Dir(); got != c.want {
+			t.Errorf("%s: got %q want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestParseInputToleratesForeignHost(t *testing.T) {
+	// agy 가 주는 낯선 필드(cost·plan_tier)와, 선언된 필드의 타입이 어긋난 값이
+	// 같이 와도 나머지는 채워져야 한다. err 는 나도 되지만(statusline 은 무시한다)
+	// 값이 비면 안 된다.
+	in, _ := ParseInput([]byte(`{
+		"model":{"display_name":"Gemini 2.5 Pro"},
+		"effort":"high",
+		"cost":{"total_cost_usd":0.12},
+		"plan_tier":"pro",
+		"context_window":{"used_percentage":42.5},
+		"workspace":{"current_dir":"/w"}}`))
+	if in.Model.DisplayName != "Gemini 2.5 Pro" || in.Dir() != "/w" ||
+		in.ContextWindow.UsedPercentage == nil || *in.ContextWindow.UsedPercentage != 42.5 {
+		t.Errorf("got %+v", in)
+	}
+}
+
 func TestParseInputRejectsEpochLeak(t *testing.T) {
 	in, _ := ParseInput([]byte(`{"rate_limits":{"five_hour":{"used_percentage":1776950400,"resets_at":1776950400}}}`))
 	if five, _ := in.StdinLimits(); five != nil {

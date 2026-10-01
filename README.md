@@ -24,6 +24,7 @@ $38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
 | `stdin` (Pro/Max) | statusline stdin의 `rate_limits` | 5h 또는 7d가 **100%일 때만** (크레딧 조회) |
 | `api` (Team) | usage API | `poll_seconds` 주기 (기본 300초) |
 | `auto` | 최근 6시간 내 stdin에 `rate_limits`가 보였으면 stdin, 아니면 api | 위 규칙 |
+| `none` | 다루지 않음 — 경로·git·모델·ctx만 | 호출하지 않음 (token·cache도 보지 않음) |
 
 - `cc-usage statusline`은 **network를 기다리지 않습니다.** usage API는 이 경로에서 호출하지 않고, 갱신이 필요하면 `cc-usage refresh`를 detached로 띄운 뒤 즉시 종료합니다. 로컬 subprocess(`git status`, `extra_commands`)는 타임아웃을 걸고 부르며, 느리거나 실패하면 그 세그먼트만 빠집니다. `extra_commands`에 network를 타는 명령을 넣는 것은 설정하는 쪽의 선택이고, 그 지연은 타임아웃이 막습니다.
 - `refresh`는 lock으로 동시에 하나만 실행되고, 실패 시 1m → 32m(최대 30m) backoff, 429의 `Retry-After`를 존중합니다.
@@ -99,7 +100,7 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
 | `config_dir` | `~/.claude` | Claude Code의 `CLAUDE_CONFIG_DIR` |
-| `source` | `auto` | `stdin` / `api` / `auto` |
+| `source` | `auto` | `stdin` / `api` / `auto` / `none`. `$CC_USAGE_SOURCE`와 `statusline --source`가 이깁니다 |
 | `keychain_service` | `Claude Code-credentials` | macOS keychain 항목 이름 |
 | `credentials_file` | `<config_dir>/.credentials.json` | Linux 등 keychain이 없을 때 |
 | `token_env` | – | 이 환경변수에 token이 있으면 우선 사용 |
@@ -121,6 +122,16 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 CC_USAGE_CONFIG=~/.config/cc-usage/work.json \
 XDG_CACHE_HOME=~/.cache/cc-usage-work \
   cc-usage statusline
+```
+
+#### Antigravity(`agy`)에서 쓰기
+
+`agy`의 statusLine도 같은 꼴의 JSON(`model`·`workspace.current_dir`·`context_window`)을 stdin으로 줍니다. 거기에는 Claude 계정의 한도가 없으므로 `--source none`으로 부릅니다 — 경로·git 줄과 모델·ctx만 나오고, token·API·cache는 일절 보지 않습니다.
+
+```json
+"statusLine": {
+  "command": "cc-usage statusline --source none"
+}
 ```
 
 #### `badges` — 어느 계정으로 돌고 있는지
@@ -261,7 +272,7 @@ cc-usage allow off   # 즉시 다시 차단
 ## 명령
 
 ```
-cc-usage statusline
+cc-usage statusline [--source none]
 cc-usage guard
 cc-usage allow [DURATION|off]
 cc-usage refresh

@@ -16,7 +16,21 @@ const (
 	SourceAuto  = "auto"  // stdin rate_limits if seen recently, otherwise OAuth usage API
 	SourceStdin = "stdin" // Pro/Max: stdin only; the API is called only after a limit is hit
 	SourceAPI   = "api"   // Team/Enterprise: poll the OAuth usage API
+	// SourceNone 은 한도를 아예 다루지 않는다 — token 도 API 도 cache 도 보지 않고
+	// 경로·git·모델·ctx 만 그린다. Claude Code 가 아닌 호스트(Antigravity `agy`)가
+	// 같은 꼴의 stdin JSON 을 줄 때 쓴다. 거기서 Claude 계정의 5h/7d 를 그리면
+	// 남의 숫자다.
+	SourceNone = "none"
 )
+
+// ValidSource reports whether s is a source value cc-usage knows.
+func ValidSource(s string) bool {
+	switch s {
+	case SourceAuto, SourceStdin, SourceAPI, SourceNone:
+		return true
+	}
+	return false
+}
 
 // Config is the whole settings file — 계정 하나를 상정한다. 한 머신에서 여러
 // 계정을 보려면 설정을 나누는 게 아니라 프로세스를 나눈다: CC_USAGE_CONFIG 와
@@ -144,6 +158,12 @@ func (c *Config) ApplyDefaults() {
 		c.ConfigDir = "~/.claude"
 	}
 	c.ConfigDir = Expand(c.ConfigDir)
+	// $CC_USAGE_SOURCE 도 설정값을 이긴다 — 설정 파일 하나를 Claude Code 와
+	// 다른 호스트가 같이 읽을 때, 호스트 쪽 command 에서만 source 를 바꾸려는 것이다.
+	// 모르는 값은 무시한다: 오타 하나로 설정 파일의 값까지 잃지 않게.
+	if v := os.Getenv("CC_USAGE_SOURCE"); ValidSource(v) {
+		c.Source = v
+	}
 	if c.Source == "" {
 		c.Source = SourceAuto
 	}

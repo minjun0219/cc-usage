@@ -134,7 +134,7 @@ type View struct {
 	ContextPct *float64
 	Limits     core.Limits
 	Alert      core.Alert
-	Usage      *store.UsageFile
+	Usage      *store.UsageFile // nil이면 한도를 다루지 않는다(source: none) — 상태 문구도 없다
 	Credits    core.CreditView
 	Now        time.Time
 }
@@ -398,6 +398,9 @@ func resetText(at, now time.Time) string {
 
 func statusNote(v View, s Style) string {
 	uf := v.Usage
+	if uf == nil {
+		return ""
+	}
 	if v.Limits.FromStdin {
 		if hit, _ := v.Limits.Exhausted(); !hit {
 			return ""

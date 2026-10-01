@@ -638,3 +638,18 @@ func TestLinesEffort(t *testing.T) {
 		t.Errorf("colored model only: %q", got)
 	}
 }
+
+func TestLinesWithoutLimits(t *testing.T) {
+	// source: none — Usage 가 nil 이면 한도 쪽 문구("usage …"·stale·크레딧)가
+	// 하나도 나오면 안 된다. 다른 호스트(agy)의 줄에 Claude 계정 상태가 섞이는 것이다.
+	p := &config.Config{Source: config.SourceNone}
+	p.ApplyDefaults()
+	pct := 42.5
+	lines := Lines(View{
+		Config: p, Dir: "/w", Model: "Gemini 2.5 Pro", ContextPct: &pct, Now: time.Now(),
+	}, Style{})
+	want := []string{"/w", "Gemini 2.5 Pro · ctx 42%"}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got %q want %q", lines, want)
+	}
+}

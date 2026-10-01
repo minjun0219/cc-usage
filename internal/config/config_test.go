@@ -104,3 +104,24 @@ func TestKeychainDefaultOnlyForDefaultDir(t *testing.T) {
 		t.Errorf("환경변수로 비기본이 되면 건너뛴다: %q", e.KeychainService)
 	}
 }
+
+func TestSourceEnvWinsOverSetting(t *testing.T) {
+	// 설정 파일 하나를 Claude Code 와 agy 가 같이 읽는다. agy 쪽 command 에서만
+	// 한도를 끄려면 환경변수가 설정값을 이겨야 한다.
+	cases := []struct {
+		name, setting, env, want string
+	}{
+		{"env 없음 → 설정값", SourceAPI, "", SourceAPI},
+		{"env 없음, 설정 없음 → auto", "", "", SourceAuto},
+		{"env none → 설정을 이긴다", SourceAPI, SourceNone, SourceNone},
+		{"모르는 env 값 → 무시", SourceStdin, "nope", SourceStdin},
+	}
+	for _, c := range cases {
+		t.Setenv("CC_USAGE_SOURCE", c.env)
+		cfg := &Config{Source: c.setting}
+		cfg.ApplyDefaults()
+		if cfg.Source != c.want {
+			t.Errorf("%s: got %q want %q", c.name, cfg.Source, c.want)
+		}
+	}
+}
