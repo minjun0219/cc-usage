@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -102,5 +103,44 @@ func TestKeychainDefaultOnlyForDefaultDir(t *testing.T) {
 	e.ApplyDefaults()
 	if e.KeychainService != "" {
 		t.Errorf("환경변수로 비기본이 되면 건너뛴다: %q", e.KeychainService)
+	}
+}
+
+func TestOverrideSource(t *testing.T) {
+	// statusline 은 설정 < env < 플래그. 모르는 env 는 무시, 모르는 플래그는 에러.
+	cases := []struct {
+		name, setting, env, flag, want string
+		err                            bool
+	}{
+		{"아무것도 없음 → 설정값", SourceAPI, "", "", SourceAPI, false},
+		{"env none 이 설정을 이긴다", SourceAPI, SourceNone, "", SourceNone, false},
+		{"플래그가 env 를 이긴다", SourceAPI, SourceNone, SourceAuto, SourceAuto, false},
+		{"모르는 env → 무시", SourceStdin, "nope", "", SourceStdin, false},
+		{"모르는 플래그 → 에러", SourceStdin, "", "bogus", SourceStdin, true},
+	}
+	for _, c := range cases {
+		t.Setenv(SourceEnv, c.env)
+		cfg := &Config{Source: c.setting}
+		cfg.ApplyDefaults()
+		err := cfg.OverrideSource(c.flag)
+		if cfg.Source != c.want || (err != nil) != c.err {
+			t.Errorf("%s: got %q err=%v, want %q err=%v", c.name, cfg.Source, err, c.want, c.err)
+		}
+	}
+}
+
+func TestLoadIgnoresSourceEnv(t *testing.T) {
+	// guard 는 Load 만 부른다. 다른 호스트 때문에 셸에 export 한 none 이 Claude Code 의
+	// guard 를 조용히 끄면 안 된다 — 크레딧이 차감되고 나서야 알게 된다.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"source":"stdin","guard":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CC_USAGE_CONFIG", path)
+	t.Setenv(SourceEnv, SourceNone)
+	cfg, err := Load()
+	if err != nil || cfg.Source != SourceStdin {
+		t.Errorf("Load 가 env 를 따랐다: source=%q err=%v", cfg.Source, err)
 	}
 }

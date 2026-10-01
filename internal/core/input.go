@@ -10,9 +10,16 @@ import (
 )
 
 // Input is the subset of the Claude Code statusline JSON that cc-usage uses.
+//
+// Antigravity(`agy`)도 같은 꼴을 준다. 여기 없는 필드(`cost`, `plan_tier` 등)는
+// encoding/json 이 그냥 건너뛰고, 선언된 필드의 타입이 어긋나도 그 필드만 비고
+// 나머지는 채워진다 — 호스트가 달라도 줄이 통째로 비지 않는다.
 type Input struct {
 	SessionID string `json:"session_id"`
-	Model     struct {
+	// Cwd 는 루트의 `cwd` 다. workspace.current_dir 이 비었을 때의 폴백 — 읽을
+	// 때는 Dir() 를 쓴다.
+	Cwd   string `json:"cwd"`
+	Model struct {
 		DisplayName string `json:"display_name"`
 	} `json:"model"`
 	// Effort 는 모델이 effort 파라미터를 지원할 때만 온다. /effort 로 세션 중에
@@ -45,6 +52,14 @@ func ParseInput(b []byte) (*Input, error) {
 	}
 	err := json.Unmarshal(b, in)
 	return in, err
+}
+
+// Dir is the working directory to render: workspace.current_dir, 없으면 cwd.
+func (in *Input) Dir() string {
+	if in.Workspace.CurrentDir != "" {
+		return in.Workspace.CurrentDir
+	}
+	return in.Cwd
 }
 
 // StdinLimits returns validated 5h/7d windows from stdin (nil when absent or invalid).

@@ -88,13 +88,29 @@ func loadConfig(name string, args []string) (*config.Config, []string, error) {
 }
 
 func runStatusline(args []string) error {
-	p, _, err := loadConfig("statusline", args)
+	fs := flag.NewFlagSet("statusline", flag.ContinueOnError)
+	source := fs.String("source", "", "설정의 source 를 이 실행에서만 바꾼다 (auto|stdin|api|none)")
+	help, err := parseFlags(fs, args)
+	if help {
+		return nil
+	}
+	var p *config.Config
+	if err == nil {
+		p, err = config.Load()
+	}
+	if err == nil {
+		err = p.OverrideSource(*source)
+	}
 	if err != nil {
 		fmt.Println("[cc-usage] " + err.Error()) // statusline must still print something
 		return nil
 	}
 	raw, _ := io.ReadAll(io.LimitReader(os.Stdin, 4<<20))
 	in, _ := core.ParseInput(raw)
+	if p.Source == config.SourceNone {
+		printLocalLines(p, in)
+		return nil
+	}
 	now := time.Now()
 
 	var st store.StateFile
@@ -112,7 +128,7 @@ func runStatusline(args []string) error {
 		st.ObservedAt, st.StdinLimitsSeen, st.FiveHour, st.SevenDay = now, now, five, seven
 		dirty = true
 	}
-	if core.NeedRefresh(p, useStdin, lim, &st, &uf, now) && spawnRefresh() == nil {
+	if core.NeedRefresh(p, useStdin, lim, &st, &uf, now) && spawn(p.Source) == nil {
 		st.SpawnedAt = now
 		dirty = true
 	}
@@ -146,53 +162,87 @@ func runStatusline(args []string) error {
 		_ = store.Write(store.StatePath(), &st)
 	}
 
-	dir := in.Workspace.CurrentDir
-	var gs *git.Status
-	if st, ok := git.Read(context.Background(), dir); ok {
-		gs = &st
-	}
+	printLines(p, in, render.View{
+		Badge:   badge,
+		Limits:  lim,
+		Alert:   alert,
+		Usage:   &uf,
+		Credits: core.Credits(p, lim, &uf, now),
+		Now:     now,
+	})
+	return nil
+}
 
-	lines := render.Lines(render.View{
-		Config:     p,
-		Dir:        dir,
-		Git:        gs,
-		Badge:      badge,
-		Model:      in.Model.DisplayName,
-		Effort:     in.Effort.Level,
-		ContextPct: in.ContextWindow.UsedPercentage,
-		Limits:     lim,
-		Alert:      alert,
-		Usage:      &uf,
-		Credits:    core.Credits(p, lim, &uf, now),
-		Now:        now,
-	}, render.DefaultStyle())
+// printLocalLines is the `source: "none"` path — 경로·git·모델·ctx 만 그린다.
+//
+// 한도를 다루는 것은 하나도 건드리지 않는다: token·keychain·API·refresh spawn
+// 은 물론이고 state.json/usage.json 도 읽지도 쓰지도 않는다. cache 를 읽으면
+// 같은 머신의 Claude Code 세션이 남긴 5h/7d 가 다른 호스트의 줄에 그려진다.
+// 계정 배지도 같은 이유로 없다 — 배지는 Claude 계정 파일에서 온다.
+func printLocalLines(p *config.Config, in *core.Input) {
+	printLines(p, in, render.View{Now: time.Now()})
+}
+
+// printLines fills the stdin-derived fields of v, renders, and appends
+// extra_commands. 한도 쪽 필드는 호출자가 채운다.
+func printLines(p *config.Config, in *core.Input, v render.View) {
+	dir := in.Dir()
+	if st, ok := git.Read(context.Background(), dir); ok {
+		v.Git = &st
+	}
+	v.Config, v.Dir = p, dir
+	v.Model, v.Effort = in.Model.DisplayName, in.Effort.Level
+	v.ContextPct = in.ContextWindow.UsedPercentage
+	lines := render.Lines(v, render.DefaultStyle())
 	// 다른 도구의 세그먼트는 cc-usage 줄 아래에 그대로 붙인다. 실패해도 조용히
 	// 빠질 뿐이라 statusline은 항상 무언가를 출력한다.
 	lines = append(lines, extra.Run(context.Background(), p.ExtraCommands,
 		extra.Vars{SessionID: in.SessionID, Cwd: dir})...)
 	fmt.Println(strings.Join(lines, "\n"))
-	return nil
 }
 
+// spawn is how statusline starts a refresh. 테스트가 바꿔 끼운다 — 진짜로 띄우면
+// os.Executable() 이 테스트 바이너리라 "refresh" 인자로 테스트가 다시 돈다.
+var spawn = spawnRefresh
+
 // spawnRefresh starts `cc-usage refresh` detached so it survives statusline cancellation.
-func spawnRefresh() error {
+//
+// source 는 환경변수로 넘긴다. statusline 의 --source 는 이 자식에게 가지 않으므로,
+// 넘기지 않으면 자식이 설정 파일이나 물려받은 $CC_USAGE_SOURCE 로 다시 판단해
+// 부모와 다른 모드로 돈다(물려받은 값이 none 이면 아예 아무것도 안 한다).
+func spawnRefresh(source string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "refresh")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	cmd := refreshCmd(exe, source)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	return cmd.Process.Release()
 }
 
+// refreshCmd builds the detached refresh command — 띄우지 않고 만들기만 해서
+// 무엇을 넘기는지 테스트할 수 있게 떼어 둔다.
+func refreshCmd(exe, source string) *exec.Cmd {
+	cmd := exec.Command(exe, "refresh")
+	cmd.Env = append(os.Environ(), config.SourceEnv+"="+source)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	return cmd
+}
+
 func runRefresh(args []string) error {
 	p, _, err := loadConfig("refresh", args)
 	if err != nil {
 		return err
+	}
+	// env 는 부모 statusline 이 정한 source 를 받는 통로다(spawnRefresh).
+	_ = p.OverrideSource("")
+	// none 은 token 조회도 API 호출도 하지 않는다. statusline 이 띄우지 않지만,
+	// 손으로 부르거나 설정·env 가 none 인 채 불려도 마찬가지다.
+	if p.Source == config.SourceNone {
+		return nil
 	}
 	unlock, ok, err := store.TryLock(store.LockPath())
 	if err != nil || !ok {
@@ -240,6 +290,11 @@ func runGuard(args []string) error {
 	p, _, err := loadConfig("guard", args)
 	if err != nil {
 		return nil // never block on misconfiguration
+	}
+	// 설정 파일의 source 만 본다 — $CC_USAGE_SOURCE 는 guard 를 끄지 않는다
+	// (config.OverrideSource).
+	if p.Source == config.SourceNone {
+		return nil // 한도를 보지 않는 모드 — 막을 근거가 없다 (fail-open)
 	}
 	now := time.Now()
 	var st store.StateFile

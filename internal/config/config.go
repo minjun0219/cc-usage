@@ -16,7 +16,47 @@ const (
 	SourceAuto  = "auto"  // stdin rate_limits if seen recently, otherwise OAuth usage API
 	SourceStdin = "stdin" // Pro/Max: stdin only; the API is called only after a limit is hit
 	SourceAPI   = "api"   // Team/Enterprise: poll the OAuth usage API
+	// SourceNone 은 한도를 아예 다루지 않는다 — token 도 API 도 cache 도 보지 않고
+	// 경로·git·모델·ctx 만 그린다. Claude Code 가 아닌 호스트(Antigravity `agy`)가
+	// 같은 꼴의 stdin JSON 을 줄 때 쓴다. 거기서 Claude 계정의 5h/7d 를 그리면
+	// 남의 숫자다.
+	SourceNone = "none"
 )
+
+// SourceEnv overrides `source` for statusline (and the refresh it spawns).
+const SourceEnv = "CC_USAGE_SOURCE"
+
+// OverrideSource applies $CC_USAGE_SOURCE, then flag — 플래그가 이긴다.
+//
+// **statusline 과 그 refresh 자식만 부른다.** Load 에 넣지 않은 이유는 guard 다:
+// 환경변수는 프로세스 트리로 물려 내려가서, 다른 호스트 때문에 셸에 export 해 둔
+// none 이 같은 셸에서 띄운 Claude Code 의 guard 를 아무 표시 없이 끈다. guard 는
+// 설정 파일만 본다.
+//
+// 모르는 env 값은 무시한다(오타 하나로 설정값까지 잃지 않게). 모르는 플래그 값은
+// 에러다 — 명령줄은 고친 사람이 바로 결과를 본다.
+func (c *Config) OverrideSource(flag string) error {
+	if v := os.Getenv(SourceEnv); ValidSource(v) {
+		c.Source = v
+	}
+	if flag == "" {
+		return nil
+	}
+	if !ValidSource(flag) {
+		return fmt.Errorf("--source %q: auto|stdin|api|none 중 하나", flag)
+	}
+	c.Source = flag
+	return nil
+}
+
+// ValidSource reports whether s is a source value cc-usage knows.
+func ValidSource(s string) bool {
+	switch s {
+	case SourceAuto, SourceStdin, SourceAPI, SourceNone:
+		return true
+	}
+	return false
+}
 
 // Config is the whole settings file — 계정 하나를 상정한다. 한 머신에서 여러
 // 계정을 보려면 설정을 나누는 게 아니라 프로세스를 나눈다: CC_USAGE_CONFIG 와

@@ -45,10 +45,12 @@ cat > "$XDG_CACHE_HOME/cc-usage/usage.json" <<JSON
  "baseline":{"window_key":"5h","credits":1080,"at":"$(date -u -r "$NOW" +%Y-%m-%dT%H:%M:%SZ)"}}
 JSON
 
+# show 제목 payload [statusline 인자...]
 show() {
 	printf '\n\033[1m── %s\033[0m\n' "$1"
-	shift
-	printf '%s' "$1" | "$BIN" statusline
+	payload=$2
+	shift 2
+	printf '%s' "$payload" | "$BIN" statusline "$@"
 }
 
 CWD=$(pwd)
@@ -108,5 +110,10 @@ JSON
 
 show "Team(api) — 한도 전에도 크레딧" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"effort\":{\"level\":\"high\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"}}"
+# source none — 다른 호스트(agy). 위와 같은 cache(한도·크레딧)가 있어도 한 글자도
+# 새지 않아야 한다. payload 는 agy 꼴: rate_limits 없음, effort 없음.
+show "source none (agy) — cache 가 있어도 한도·크레딧 없음" \
+ "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Gemini 2.5 Pro\"},\"context_window\":{\"used_percentage\":42.5},\"workspace\":{\"current_dir\":\"$CWD\"}}" \
+ --source none
 rm -rf "$API_DIR"
 printf '\n'

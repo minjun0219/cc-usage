@@ -638,3 +638,29 @@ func TestLinesEffort(t *testing.T) {
 		t.Errorf("colored model only: %q", got)
 	}
 }
+
+func TestLinesWithoutLimits(t *testing.T) {
+	// source: none — Usage 가 nil 이면 한도 쪽 문구("usage …"·stale·크레딧)가
+	// 하나도 나오면 안 된다. 다른 호스트(agy)의 줄에 Claude 계정 상태가 섞이는 것이다.
+	p := &config.Config{Source: config.SourceNone}
+	p.ApplyDefaults()
+	pct := 42.5
+	lines := Lines(View{
+		Config: p, Dir: "/w", Model: "Gemini 2.5 Pro", ContextPct: &pct, Now: time.Now(),
+	}, Style{})
+	want := []string{"/w", "Gemini 2.5 Pro · ctx 42%"}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got %q want %q", lines, want)
+	}
+}
+
+func TestLinesNilUsageWithCreditView(t *testing.T) {
+	// Usage 가 nil 인 View 는 "한도를 다루지 않음" 이다. 누가 Credits 를 채워 넘겨도
+	// panic 으로 statusline 이 통째로 비면 안 된다.
+	p := &config.Config{}
+	p.ApplyDefaults()
+	lines := Lines(View{Config: p, Model: "M", Credits: core.CreditView{Show: true}, Now: time.Now()}, Style{})
+	if len(lines) == 0 {
+		t.Fatal("빈 출력")
+	}
+}
