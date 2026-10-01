@@ -105,3 +105,75 @@ func TestSteadyAlertNeverBursts(t *testing.T) {
 		t.Errorf("여유 구간인데 경보: %+v", a)
 	}
 }
+
+func TestAgyLimitsUnknownModelDrawsNothing(t *testing.T) {
+	// 모델 이름을 모르면 어느 버킷인지 모른다 — 3p 숫자를 Gemini 세션에 그리지 않는다.
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	for _, raw := range []string{
+		`{"product":"antigravity","quota":{"3p-5h":{"remaining_fraction":0.25}}}`,
+		`{"product":"antigravity","model":"gemini","quota":{"3p-5h":{"remaining_fraction":0.25}}}`, // 타입 어긋남 → 이름 빔
+	} {
+		in, _ := ParseInput([]byte(raw))
+		if lim := AgyLimits(in, now); lim.FiveHour != nil || lim.SevenDay != nil {
+			t.Errorf("%s: got %+v", raw, lim)
+		}
+	}
+	// 접두사가 달라도 gemini 를 품으면 gemini 버킷이다.
+	in := agyInput(t, "Google Gemini 4 Ultra")
+	if lim := AgyLimits(in, now); lim.FiveHour == nil || !near(lim.FiveHour.Percent, 14.04) {
+		t.Errorf("Google Gemini: got %+v", lim.FiveHour)
+	}
+}
+
+func TestAgyWindowClampsEdgeNoise(t *testing.T) {
+	f := func(v float64) *agyQuota { return &agyQuota{RemainingFraction: &v} }
+	cases := []struct {
+		q    *agyQuota
+		want float64 // 사용률, -1 이면 nil
+	}{
+		{f(-1e-9), 100},   // 소진 직후의 음수 오차 — 창이 사라지면 안 된다
+		{f(1.0000001), 0}, // 미사용의 오차
+		{f(0.5), 50},      //
+		{f(1.5), -1},      // 단위를 모른다
+		{f(-0.2), -1},     //
+		{&agyQuota{}, -1}, // 값 없음
+	}
+	for _, c := range cases {
+		w := agyWindow(c.q)
+		switch {
+		case c.want < 0 && w != nil:
+			t.Errorf("%v: got %+v want nil", *c.q, w)
+		case c.want >= 0 && (w == nil || !near(w.Percent, c.want)):
+			t.Errorf("%v: got %+v want %.0f", *c.q, w, c.want)
+		}
+	}
+}
+
+func TestLocalLimits(t *testing.T) {
+	// none·agy 만 local 이다. Claude Code payload 는 source 가 무엇이든 local 이 아니다.
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	agy := agyInput(t, "Gemini 3.8 Flash (High)")
+	claude, _ := ParseInput([]byte(`{"model":{"display_name":"Opus 5"}}`))
+	cases := []struct {
+		name      string
+		source    string
+		in        *Input
+		local     bool
+		hasLimits bool
+	}{
+		{"claude auto", config.SourceAuto, claude, false, false},
+		{"claude api", config.SourceAPI, claude, false, false},
+		{"claude none", config.SourceNone, claude, true, false},
+		{"agy auto", config.SourceAuto, agy, true, true},
+		{"agy api", config.SourceAPI, agy, true, true},
+		{"agy none", config.SourceNone, agy, true, false},
+	}
+	for _, c := range cases {
+		p := &config.Config{Source: c.source}
+		p.ApplyDefaults()
+		lim, _, local := LocalLimits(p, c.in, now)
+		if local != c.local || (lim.FiveHour != nil) != c.hasLimits {
+			t.Errorf("%s: local=%v limits=%+v", c.name, local, lim)
+		}
+	}
+}
