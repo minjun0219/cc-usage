@@ -101,9 +101,15 @@ const statuslineHelp = `cc-usage statusline — Claude Code 의 statusLine comma
         설정의 source 를 이 statusline 실행에서만 바꾼다 ($CC_USAGE_SOURCE 도 같다. 플래그가
         이긴다). guard 에는 먹지 않는다 — guard 는 설정 파일의 source 만 본다.
         none 은 token·API·cache 를 일절 보지 않고 1번 줄과 모델 · ctx 만 그린다
-        (extra_commands 는 그대로 붙는다). Claude Code 가 아닌 호스트에 쓴다. Antigravity(agy) 에서는 /statusline 으로 걸거나
-        ~/.gemini/antigravity-cli/settings.json 에:
-          "statusLine": { "type": "command", "command": "cc-usage statusline --source none" }
+        (extra_commands 는 그대로 붙는다).
+
+  Antigravity(agy) 에서도 같은 명령을 건다 — stdin 의 product 로 알아본다.
+        Claude 쪽 token·API·cache 는 source 와 무관하게 보지 않고, 한도는 agy 가 주는
+        quota 로 그린다(Gemini 모델이면 gemini-*, 아니면 3p-* 버킷). agy 안에서
+        /statusline cc-usage statusline, 또는 ~/.gemini/antigravity-cli/settings.json 에:
+          "statusLine": { "type": "command", "command": "cc-usage statusline" }
+        한도 없이 경로·모델만 보려면 --source none 을 붙인다. extra_commands 는 agy 에서도
+        돌고, {{session_id}} 에는 agy 의 세션 id 가 들어간다.
 `
 
 func statuslineHelpText() string {

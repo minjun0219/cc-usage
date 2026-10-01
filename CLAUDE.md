@@ -83,6 +83,23 @@ keychain 이 기본 계정 token 을 먼저 집어서 creds 파일 폴백까지 
 keychain 기본값을 주지 않는다**(건너뛰고 `<config_dir>/.credentials.json` 만 본다). 못 찾으면 숫자가 안
 나오는데, 틀린 계정의 숫자보다 낫다. 그 dir 의 keychain 이름을 아는 사용자는 설정에 적으면 그대로 쓰인다.
 
+## Antigravity(`agy`) statusLine 입력 (2026-10-01, agy 1.2.14 실측)
+
+tmux 로 agy 를 띄워 statusLine 에 stdin 을 덤프하는 스크립트를 걸어 확인했다. 설정은
+`~/.gemini/antigravity-cli/settings.json` 의 `statusLine: {type: "command", command}` 이다.
+
+- **Claude Code 와 같은 꼴이다.** `model.display_name` · `workspace.current_dir` · `cwd` ·
+  `context_window.used_percentage`(+`remaining_percentage`·`context_window_size`=1048576) · `session_id` · `transcript_path`.
+- **`rate_limits` 는 없고 `quota` 가 온다.** `gemini-5h` · `gemini-weekly` · `3p-5h` · `3p-weekly`, 각각
+  `remaining_fraction`(0-1, **남은** 비율) · `reset_time`(ISO8601) · `reset_in_seconds`. 3p 는 이름으로 보아
+  Gemini 가 아닌 모델(Claude·GPT-OSS) 몫이다 — 대응표가 오지 않아 모델 이름으로 고른다.
+- `product: "antigravity"` 로 호스트를 가른다. Claude Code payload 에는 이 필드가 없다.
+- `model.effort` 는 **문자열**이다(Claude Code 는 최상위 `effort.level` 객체). `display_name` 에 이미
+  "(High)" 가 붙어 와서 쓰지 않는다.
+- **`COLUMNS`·`LINES` 를 넣어 주지 않는다.** 대신 stdin 에 `terminal_width` 가 온다. 지금 폭을 쓰는 곳은
+  크레딧 줄 배치뿐이고 agy 에는 크레딧이 없어 쓰지 않는다. `COLORTERM=truecolor` 는 온다(Claude Code 는 안 옴).
+- `plan_tier`("Google AI Pro") · `email` · `agent_state` · `vcs` · `sandbox` 도 온다. 쓰지 않는다.
+
 ## 미확인 사항 (실제 계정으로 검증 필요)
 
 - 크레딧으로 넘어간 뒤에도 stdin `rate_limits`가 100%로 유지되는지

@@ -107,7 +107,9 @@ func runStatusline(args []string) error {
 	}
 	raw, _ := io.ReadAll(io.LimitReader(os.Stdin, 4<<20))
 	in, _ := core.ParseInput(raw)
-	if p.Source == config.SourceNone {
+	// agy 는 Claude 계정과 무관하다 — source 가 무엇이든 Claude 쪽 한도 경로를
+	// 타지 않는다. 설정 파일 하나를 두 호스트가 같이 읽어도 되게 하는 분기다.
+	if p.Source == config.SourceNone || in.IsAgy() {
 		printLocalLines(p, in)
 		return nil
 	}
@@ -173,14 +175,21 @@ func runStatusline(args []string) error {
 	return nil
 }
 
-// printLocalLines is the `source: "none"` path — 경로·git·모델·ctx 만 그린다.
+// printLocalLines is the path that never touches Claude's limits — `source:
+// "none"` 과 agy 호스트가 여기로 온다. 경로·git·모델·ctx 를 그리고, agy 면
+// stdin 의 quota 를 5h/7d 로 얹는다(none 이면 그것도 없다).
 //
-// 한도를 다루는 것은 하나도 건드리지 않는다: token·keychain·API·refresh spawn
-// 은 물론이고 state.json/usage.json 도 읽지도 쓰지도 않는다. cache 를 읽으면
-// 같은 머신의 Claude Code 세션이 남긴 5h/7d 가 다른 호스트의 줄에 그려진다.
-// 계정 배지도 같은 이유로 없다 — 배지는 Claude 계정 파일에서 온다.
+// token·keychain·API·refresh spawn 은 물론이고 state.json/usage.json 도 읽지도
+// 쓰지도 않는다. cache 를 읽으면 같은 머신의 Claude Code 세션이 남긴 5h/7d 가
+// 다른 호스트의 줄에 그려진다. 계정 배지도 같은 이유로 없다 — 배지는 Claude
+// 계정 파일에서 온다.
 func printLocalLines(p *config.Config, in *core.Input) {
-	printLines(p, in, render.View{Now: time.Now()})
+	v := render.View{Now: time.Now()}
+	if in.IsAgy() && p.Source != config.SourceNone {
+		v.Limits = core.AgyLimits(in, v.Now)
+		v.Alert = core.SteadyAlert(p, v.Limits)
+	}
+	printLines(p, in, v)
 }
 
 // printLines fills the stdin-derived fields of v, renders, and appends

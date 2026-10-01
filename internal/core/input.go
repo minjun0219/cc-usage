@@ -37,6 +37,10 @@ type Input struct {
 		FiveHour *stdinWindow `json:"five_hour"`
 		SevenDay *stdinWindow `json:"seven_day"`
 	} `json:"rate_limits"`
+
+	// 아래는 Antigravity(agy) 만 준다. Claude Code 에는 없다.
+	Product string               `json:"product"` // "antigravity"
+	Quota   map[string]*agyQuota `json:"quota"`
 }
 
 type stdinWindow struct {

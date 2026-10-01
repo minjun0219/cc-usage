@@ -126,16 +126,20 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 
 #### Antigravity(`agy`)에서 쓰기
 
-`agy`의 statusLine도 같은 꼴의 JSON(`model`·`workspace.current_dir`·`context_window`)을 stdin으로 줍니다. 거기에는 Claude 계정의 한도가 없으므로 `--source none`으로 부릅니다 — 경로·git 줄과 모델·ctx만 나오고, token·API·cache는 일절 보지 않습니다. `extra_commands`는 그대로 붙습니다 — 그 명령이 받는 `{{session_id}}`는 agy의 세션 id입니다.
-
-agy 안에서 `/statusline cc-usage statusline --source none`을 치면 `~/.gemini/antigravity-cli/settings.json`에 아래가 저장됩니다(1.2.14 실측). 파일을 직접 고쳐도 같습니다.
+주 대상은 Claude Code이지만, `agy`의 statusLine도 같은 꼴의 JSON을 stdin으로 주므로 **같은 명령을 그대로** 겁니다. agy 안에서 `/statusline cc-usage statusline`을 치면 `~/.gemini/antigravity-cli/settings.json`에 아래가 저장됩니다(1.2.14 실측). 파일을 직접 고쳐도 같습니다.
 
 ```json
 "statusLine": {
   "type": "command",
-  "command": "cc-usage statusline --source none"
+  "command": "cc-usage statusline"
 }
 ```
+
+- stdin의 `product: "antigravity"`로 agy를 알아봅니다. 이때는 **`source`와 무관하게** Claude 쪽 token·API·cache·계정 배지를 보지 않습니다 — 같은 머신의 Claude 세션이 남긴 5h/7d가 agy 줄에 섞이지 않게 하려는 것입니다.
+- 한도는 agy가 stdin으로 주는 `quota`로 그립니다. 모델이 Gemini면 `gemini-5h`/`gemini-weekly`, 그 밖(Claude·GPT-OSS)이면 `3p-5h`/`3p-weekly`를 5h/7d 자리에 씁니다. 표기·색·7d가 나타나는 기준은 Claude Code와 같습니다.
+- 임박·소진 경보는 **깜빡이지 않고 배지로 고정**됩니다. 깜빡임은 경보가 올라간 시각을 `state.json`에 적어야 셀 수 있는데, agy 경로는 cache를 쓰지 않습니다.
+- 한도 없이 경로·git·모델·ctx만 보려면 `--source none`을 붙입니다.
+- `extra_commands`는 agy에서도 그대로 붙습니다. 그 명령이 받는 `{{session_id}}`는 agy의 세션 id입니다 — Claude 세션 id로 조회하는 명령이면 빈 출력으로 조용히 빠집니다.
 
 #### `badges` — 어느 계정으로 돌고 있는지
 
