@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -105,23 +106,41 @@ func TestKeychainDefaultOnlyForDefaultDir(t *testing.T) {
 	}
 }
 
-func TestSourceEnvWinsOverSetting(t *testing.T) {
-	// 설정 파일 하나를 Claude Code 와 agy 가 같이 읽는다. agy 쪽 command 에서만
-	// 한도를 끄려면 환경변수가 설정값을 이겨야 한다.
+func TestOverrideSource(t *testing.T) {
+	// statusline 은 설정 < env < 플래그. 모르는 env 는 무시, 모르는 플래그는 에러.
 	cases := []struct {
-		name, setting, env, want string
+		name, setting, env, flag, want string
+		err                            bool
 	}{
-		{"env 없음 → 설정값", SourceAPI, "", SourceAPI},
-		{"env 없음, 설정 없음 → auto", "", "", SourceAuto},
-		{"env none → 설정을 이긴다", SourceAPI, SourceNone, SourceNone},
-		{"모르는 env 값 → 무시", SourceStdin, "nope", SourceStdin},
+		{"아무것도 없음 → 설정값", SourceAPI, "", "", SourceAPI, false},
+		{"env none 이 설정을 이긴다", SourceAPI, SourceNone, "", SourceNone, false},
+		{"플래그가 env 를 이긴다", SourceAPI, SourceNone, SourceAuto, SourceAuto, false},
+		{"모르는 env → 무시", SourceStdin, "nope", "", SourceStdin, false},
+		{"모르는 플래그 → 에러", SourceStdin, "", "bogus", SourceStdin, true},
 	}
 	for _, c := range cases {
-		t.Setenv("CC_USAGE_SOURCE", c.env)
+		t.Setenv(SourceEnv, c.env)
 		cfg := &Config{Source: c.setting}
 		cfg.ApplyDefaults()
-		if cfg.Source != c.want {
-			t.Errorf("%s: got %q want %q", c.name, cfg.Source, c.want)
+		err := cfg.OverrideSource(c.flag)
+		if cfg.Source != c.want || (err != nil) != c.err {
+			t.Errorf("%s: got %q err=%v, want %q err=%v", c.name, cfg.Source, err, c.want, c.err)
 		}
+	}
+}
+
+func TestLoadIgnoresSourceEnv(t *testing.T) {
+	// guard 는 Load 만 부른다. 다른 호스트 때문에 셸에 export 한 none 이 Claude Code 의
+	// guard 를 조용히 끄면 안 된다 — 크레딧이 차감되고 나서야 알게 된다.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"source":"stdin","guard":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CC_USAGE_CONFIG", path)
+	t.Setenv(SourceEnv, SourceNone)
+	cfg, err := Load()
+	if err != nil || cfg.Source != SourceStdin {
+		t.Errorf("Load 가 env 를 따랐다: source=%q err=%v", cfg.Source, err)
 	}
 }

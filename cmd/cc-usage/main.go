@@ -98,12 +98,8 @@ func runStatusline(args []string) error {
 	if err == nil {
 		p, err = config.Load()
 	}
-	if err == nil && *source != "" {
-		if !config.ValidSource(*source) {
-			err = fmt.Errorf("--source %q: auto|stdin|api|none 중 하나", *source)
-		} else {
-			p.Source = *source
-		}
+	if err == nil {
+		err = p.OverrideSource(*source)
 	}
 	if err != nil {
 		fmt.Println("[cc-usage] " + err.Error()) // statusline must still print something
@@ -230,7 +226,7 @@ func spawnRefresh(source string) error {
 // 무엇을 넘기는지 테스트할 수 있게 떼어 둔다.
 func refreshCmd(exe, source string) *exec.Cmd {
 	cmd := exec.Command(exe, "refresh")
-	cmd.Env = append(os.Environ(), "CC_USAGE_SOURCE="+source)
+	cmd.Env = append(os.Environ(), config.SourceEnv+"="+source)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	return cmd
@@ -241,8 +237,10 @@ func runRefresh(args []string) error {
 	if err != nil {
 		return err
 	}
+	// env 는 부모 statusline 이 정한 source 를 받는 통로다(spawnRefresh).
+	_ = p.OverrideSource("")
 	// none 은 token 조회도 API 호출도 하지 않는다. statusline 이 띄우지 않지만,
-	// 손으로 부르거나 $CC_USAGE_SOURCE 가 걸린 채 다른 경로로 불려도 마찬가지다.
+	// 손으로 부르거나 설정·env 가 none 인 채 불려도 마찬가지다.
 	if p.Source == config.SourceNone {
 		return nil
 	}
@@ -293,6 +291,8 @@ func runGuard(args []string) error {
 	if err != nil {
 		return nil // never block on misconfiguration
 	}
+	// 설정 파일의 source 만 본다 — $CC_USAGE_SOURCE 는 guard 를 끄지 않는다
+	// (config.OverrideSource).
 	if p.Source == config.SourceNone {
 		return nil // 한도를 보지 않는 모드 — 막을 근거가 없다 (fail-open)
 	}

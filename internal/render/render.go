@@ -452,7 +452,7 @@ func creditLine(v View, s Style) string {
 	}
 	cur := v.Config.Currency
 	if !cv.Enabled {
-		if v.Usage.Usage != nil && v.Usage.Usage.Extra != nil && !v.Usage.Usage.Extra.Enabled {
+		if v.Usage != nil && v.Usage.Usage != nil && v.Usage.Usage.Extra != nil && !v.Usage.Usage.Extra.Enabled {
 			return s.c(dim, "크레딧 비활성 — 한도 reset까지 대기")
 		}
 		return s.c(yellow, "한도 소진 · 크레딧 조회 중…")

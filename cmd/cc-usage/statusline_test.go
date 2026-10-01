@@ -238,3 +238,25 @@ func TestRefreshCmdPassesSource(t *testing.T) {
 		t.Errorf("detached refresh 가 아니다: args=%v attr=%+v", cmd.Args, cmd.SysProcAttr)
 	}
 }
+
+func TestRefreshNoneIsNoop(t *testing.T) {
+	// none 은 token 도 API 도 보지 않는다 — 설정이 none 이든, 부모 statusline 이 env 로
+	// none 을 넘겼든. token_env 에 값을 둬서 조회까지 갔다면 usage.json 이 남게 한다.
+	cases := []struct{ name, setting, env string }{
+		{"설정 none", "none", ""},
+		{"env none (부모에게서)", "auto", "none"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t, c.setting)
+			t.Setenv("CC_USAGE_SOURCE", c.env)
+			t.Setenv("CC_USAGE_API_URL", "http://127.0.0.1:1/x")
+			if err := runRefresh(nil); err != nil {
+				t.Fatalf("runRefresh: %v", err)
+			}
+			if files := h.cacheFiles(); len(files) != 0 {
+				t.Errorf("none 인데 refresh 가 무언가 남겼다: %v", files)
+			}
+		})
+	}
+}

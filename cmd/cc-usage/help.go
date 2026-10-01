@@ -98,9 +98,10 @@ const statuslineHelp = `cc-usage statusline — Claude Code 의 statusLine comma
   바로 끝난다. 어떤 실패에도 무언가를 출력한다. 세그먼트가 안 보이면 cc-usage doctor.
 
   --source auto|stdin|api|none
-        설정의 source 를 이 실행에서만 바꾼다 ($CC_USAGE_SOURCE 도 같다. 플래그가 이긴다).
-        none 은 token·API·cache 를 일절 보지 않고 1번 줄과 모델 · ctx 만 그린다 —
-        Claude Code 가 아닌 호스트에 쓴다. Antigravity(agy) 에서는 /statusline 으로 걸거나
+        설정의 source 를 이 statusline 실행에서만 바꾼다 ($CC_USAGE_SOURCE 도 같다. 플래그가
+        이긴다). guard 에는 먹지 않는다 — guard 는 설정 파일의 source 만 본다.
+        none 은 token·API·cache 를 일절 보지 않고 1번 줄과 모델 · ctx 만 그린다
+        (extra_commands 는 그대로 붙는다). Claude Code 가 아닌 호스트에 쓴다. Antigravity(agy) 에서는 /statusline 으로 걸거나
         ~/.gemini/antigravity-cli/settings.json 에:
           "statusLine": { "type": "command", "command": "cc-usage statusline --source none" }
 `
@@ -114,7 +115,7 @@ func statuslineHelpText() string {
 const configFields = `필드 (모두 생략 가능)
   config_dir           ~/.claude       Claude Code 의 CLAUDE_CONFIG_DIR ($CLAUDE_CONFIG_DIR 가 이긴다)
   source               auto            stdin (Pro/Max) / api (Team) / auto / none (한도 끔)
-                                       $CC_USAGE_SOURCE · statusline --source 가 이긴다
+                                       statusline 에서는 $CC_USAGE_SOURCE · --source 가 이긴다
   keychain_service     Claude Code-credentials
                                        macOS keychain 항목. 비기본 config_dir 이면 기본값 없음
                                        — 후보는 cc-usage doctor 가 나열한다

@@ -100,7 +100,7 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
 | `config_dir` | `~/.claude` | Claude Code의 `CLAUDE_CONFIG_DIR` |
-| `source` | `auto` | `stdin` / `api` / `auto` / `none`. `$CC_USAGE_SOURCE`와 `statusline --source`가 이깁니다 |
+| `source` | `auto` | `stdin` / `api` / `auto` / `none`. statusline에서는 `$CC_USAGE_SOURCE`와 `--source`가 이깁니다(guard는 설정 파일만 봅니다) |
 | `keychain_service` | `Claude Code-credentials` | macOS keychain 항목 이름 |
 | `credentials_file` | `<config_dir>/.credentials.json` | Linux 등 keychain이 없을 때 |
 | `token_env` | – | 이 환경변수에 token이 있으면 우선 사용 |
@@ -126,7 +126,7 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 
 #### Antigravity(`agy`)에서 쓰기
 
-`agy`의 statusLine도 같은 꼴의 JSON(`model`·`workspace.current_dir`·`context_window`)을 stdin으로 줍니다. 거기에는 Claude 계정의 한도가 없으므로 `--source none`으로 부릅니다 — 경로·git 줄과 모델·ctx만 나오고, token·API·cache는 일절 보지 않습니다.
+`agy`의 statusLine도 같은 꼴의 JSON(`model`·`workspace.current_dir`·`context_window`)을 stdin으로 줍니다. 거기에는 Claude 계정의 한도가 없으므로 `--source none`으로 부릅니다 — 경로·git 줄과 모델·ctx만 나오고, token·API·cache는 일절 보지 않습니다. `extra_commands`는 그대로 붙습니다 — 그 명령이 받는 `{{session_id}}`는 agy의 세션 id입니다.
 
 agy 안에서 `/statusline cc-usage statusline --source none`을 치면 `~/.gemini/antigravity-cli/settings.json`에 아래가 저장됩니다(1.2.14 실측). 파일을 직접 고쳐도 같습니다.
 

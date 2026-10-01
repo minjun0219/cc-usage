@@ -23,6 +23,32 @@ const (
 	SourceNone = "none"
 )
 
+// SourceEnv overrides `source` for statusline (and the refresh it spawns).
+const SourceEnv = "CC_USAGE_SOURCE"
+
+// OverrideSource applies $CC_USAGE_SOURCE, then flag — 플래그가 이긴다.
+//
+// **statusline 과 그 refresh 자식만 부른다.** Load 에 넣지 않은 이유는 guard 다:
+// 환경변수는 프로세스 트리로 물려 내려가서, 다른 호스트 때문에 셸에 export 해 둔
+// none 이 같은 셸에서 띄운 Claude Code 의 guard 를 아무 표시 없이 끈다. guard 는
+// 설정 파일만 본다.
+//
+// 모르는 env 값은 무시한다(오타 하나로 설정값까지 잃지 않게). 모르는 플래그 값은
+// 에러다 — 명령줄은 고친 사람이 바로 결과를 본다.
+func (c *Config) OverrideSource(flag string) error {
+	if v := os.Getenv(SourceEnv); ValidSource(v) {
+		c.Source = v
+	}
+	if flag == "" {
+		return nil
+	}
+	if !ValidSource(flag) {
+		return fmt.Errorf("--source %q: auto|stdin|api|none 중 하나", flag)
+	}
+	c.Source = flag
+	return nil
+}
+
 // ValidSource reports whether s is a source value cc-usage knows.
 func ValidSource(s string) bool {
 	switch s {
@@ -158,12 +184,6 @@ func (c *Config) ApplyDefaults() {
 		c.ConfigDir = "~/.claude"
 	}
 	c.ConfigDir = Expand(c.ConfigDir)
-	// $CC_USAGE_SOURCE 도 설정값을 이긴다 — 설정 파일 하나를 Claude Code 와
-	// 다른 호스트가 같이 읽을 때, 호스트 쪽 command 에서만 source 를 바꾸려는 것이다.
-	// 모르는 값은 무시한다: 오타 하나로 설정 파일의 값까지 잃지 않게.
-	if v := os.Getenv("CC_USAGE_SOURCE"); ValidSource(v) {
-		c.Source = v
-	}
 	if c.Source == "" {
 		c.Source = SourceAuto
 	}
