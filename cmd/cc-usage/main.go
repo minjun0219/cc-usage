@@ -107,11 +107,12 @@ func runStatusline(args []string) error {
 	}
 	raw, _ := io.ReadAll(io.LimitReader(os.Stdin, 4<<20))
 	in, _ := core.ParseInput(raw)
-	if p.Source == config.SourceNone {
-		printLocalLines(p, in)
+	now := time.Now()
+	// none·agy 는 여기서 갈린다 — 판단은 core.LocalLimits 에 있다.
+	if lim, alert, local := core.LocalLimits(p, in, now); local {
+		printLines(p, in, render.View{Limits: lim, Alert: alert, Now: now})
 		return nil
 	}
-	now := time.Now()
 
 	var st store.StateFile
 	var uf store.UsageFile
@@ -173,15 +174,11 @@ func runStatusline(args []string) error {
 	return nil
 }
 
-// printLocalLines is the `source: "none"` path — 경로·git·모델·ctx 만 그린다.
-//
-// 한도를 다루는 것은 하나도 건드리지 않는다: token·keychain·API·refresh spawn
-// 은 물론이고 state.json/usage.json 도 읽지도 쓰지도 않는다. cache 를 읽으면
-// 같은 머신의 Claude Code 세션이 남긴 5h/7d 가 다른 호스트의 줄에 그려진다.
-// 계정 배지도 같은 이유로 없다 — 배지는 Claude 계정 파일에서 온다.
-func printLocalLines(p *config.Config, in *core.Input) {
-	printLines(p, in, render.View{Now: time.Now()})
-}
+// none·agy 경로(core.LocalLimits 가 local 을 낸 경우)는 printLines 만 부른다.
+// token·keychain·API·refresh spawn 은 물론이고 state.json/usage.json 도 읽지도
+// 쓰지도 않는다. cache 를 읽으면 같은 머신의 Claude Code 세션이 남긴 5h/7d 가
+// 다른 호스트의 줄에 그려진다. 계정 배지도 같은 이유로 없다 — 배지는 Claude
+// 계정 파일에서 온다. Usage 를 비워 두는 것이 렌더에 "한도 상태 문구 없음" 을 뜻한다.
 
 // printLines fills the stdin-derived fields of v, renders, and appends
 // extra_commands. 한도 쪽 필드는 호출자가 채운다.

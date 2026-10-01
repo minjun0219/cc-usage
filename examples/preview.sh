@@ -115,5 +115,17 @@ show "Team(api) — 한도 전에도 크레딧" \
 show "source none (agy) — cache 가 있어도 한도·크레딧 없음" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Gemini 2.5 Pro\"},\"context_window\":{\"used_percentage\":42.5},\"workspace\":{\"current_dir\":\"$CWD\"}}" \
  --source none
+# agy 호스트 — product: antigravity 면 source 와 무관하게 Claude 한도 경로를 타지 않고
+# stdin 의 quota 를 그린다. 위 cache 가 그대로 있는 상태라 섞이지 않는지도 같이 본다.
+# 버킷은 모델로 고른다(Gemini → gemini-*, 그 밖 → 3p-*).
+R5ISO=$(date -u -r "$R5" +%Y-%m-%dT%H:%M:%SZ)
+R7ISO=$(date -u -r "$R7" +%Y-%m-%dT%H:%M:%SZ)
+agy_payload() { # 모델 gemini-5h남음 gemini-weekly남음 3p-5h남음 3p-weekly남음
+	printf '{"product":"antigravity","model":{"display_name":"%s","effort":"high"},"context_window":{"used_percentage":12},"workspace":{"current_dir":"%s"},"quota":{"gemini-5h":{"remaining_fraction":%s,"reset_time":"%s"},"gemini-weekly":{"remaining_fraction":%s,"reset_time":"%s"},"3p-5h":{"remaining_fraction":%s,"reset_time":"%s"},"3p-weekly":{"remaining_fraction":%s,"reset_time":"%s"}}}' \
+		"$1" "$CWD" "$2" "$R5ISO" "$3" "$R7ISO" "$4" "$R5ISO" "$5" "$R7ISO"
+}
+show "agy — Gemini 평소" "$(agy_payload 'Gemini 3.8 Flash (High)' 0.86 0.94 1 1)"
+show "agy — Claude 모델은 3p 버킷 (주간 75% 사용)" "$(agy_payload 'Claude Opus 4.6 (Thinking)' 0.86 0.94 0.6 0.25)"
+show "agy — 5h 소진 (깜빡이지 않고 배지로 고정)" "$(agy_payload 'Gemini 3.8 Flash (High)' 0 0.5 1 1)"
 rm -rf "$API_DIR"
 printf '\n'

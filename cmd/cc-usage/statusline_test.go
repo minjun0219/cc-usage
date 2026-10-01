@@ -260,3 +260,74 @@ func TestRefreshNoneIsNoop(t *testing.T) {
 		})
 	}
 }
+
+// agyPayload 는 agy 1.2.14 실측 꼴에서 식별 정보를 뺀 것이다.
+func agyPayload(dir string) string {
+	r5 := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	r7 := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
+	return `{"cwd":"` + dir + `","session_id":"s","product":"antigravity","plan_tier":"Google AI Pro",` +
+		`"model":{"id":"Gemini 3.8 Flash (High)","display_name":"Gemini 3.8 Flash (High)","effort":"high"},` +
+		`"workspace":{"current_dir":"` + dir + `","project_dir":"` + dir + `"},` +
+		`"context_window":{"used_percentage":12,"context_window_size":1048576},` +
+		`"quota":{"gemini-5h":{"remaining_fraction":0.86,"reset_time":"` + r5 + `"},` +
+		`"gemini-weekly":{"remaining_fraction":0.94,"reset_time":"` + r7 + `"},` +
+		`"3p-5h":{"remaining_fraction":1,"reset_time":"` + r5 + `"}}}`
+}
+
+func TestStatuslineAgyNeverTouchesClaude(t *testing.T) {
+	// agy 는 source 설정과 무관하게 Claude 쪽(refresh·cache·계정 배지)을 건드리지
+	// 않고, 한도는 stdin 의 quota 로만 그린다. 같은 머신 Claude 세션의 5h(70% 남음)
+	// 가 새면 안 된다.
+	for _, source := range []string{"auto", "stdin", "api"} {
+		t.Run(source, func(t *testing.T) {
+			h := newHarness(t, source)
+			h.seedClaudeCache(t)
+			before := h.cacheFiles()
+			out := h.run(t, agyPayload(h.dir))
+			if len(h.spawned) != 0 {
+				t.Errorf("agy 인데 refresh: %v", h.spawned)
+			}
+			if after := h.cacheFiles(); !slices.Equal(before, after) {
+				t.Errorf("cache 가 바뀌었다: %v → %v", before, after)
+			}
+			if !strings.Contains(out, "Gemini 3.8 Flash (High) · ctx 12% · 5h 86%") {
+				t.Errorf("agy quota 가 안 그려졌다:\n%s", out)
+			}
+			for _, banned := range []string{"70%", "usage", "💳", "🏢"} {
+				if strings.Contains(out, banned) {
+					t.Errorf("agy 출력에 Claude 쪽 %q:\n%s", banned, out)
+				}
+			}
+		})
+	}
+}
+
+func TestStatuslineAgyWithSourceNoneDrawsNoLimits(t *testing.T) {
+	h := newHarness(t, "auto")
+	out := h.run(t, agyPayload(h.dir), "--source", "none")
+	if strings.Contains(out, "5h") || strings.Contains(out, "7d") {
+		t.Errorf("none 인데 한도:\n%s", out)
+	}
+	if len(h.spawned) != 0 || len(h.cacheFiles()) != 0 {
+		t.Errorf("부수효과: spawn=%v cache=%v", h.spawned, h.cacheFiles())
+	}
+}
+
+func TestStatuslineClaudeIgnoresAgyFields(t *testing.T) {
+	// product 가 antigravity 가 아니면 quota 가 같이 와도 Claude 경로다 — 한도는
+	// rate_limits 에서 오고 state.json 에 남는다. agy 판별이 넓어지면 이 테스트가 깨진다.
+	for _, product := range []string{"", "claude-code"} {
+		t.Run("product="+product, func(t *testing.T) {
+			h := newHarness(t, "stdin")
+			p := strings.TrimSuffix(claudePayload(h.dir, true), "}") +
+				`,"product":"` + product + `","quota":{"gemini-5h":{"remaining_fraction":0.1}}}`
+			out := h.run(t, p)
+			if !strings.Contains(out, "5h 70%") || strings.Contains(out, "5h 10%") || !strings.Contains(out, "🏢") {
+				t.Errorf("Claude 경로가 아니다:\n%s", out)
+			}
+			if !slices.Contains(h.cacheFiles(), "state.json") {
+				t.Errorf("state.json 이 없다: %v", h.cacheFiles())
+			}
+		})
+	}
+}
