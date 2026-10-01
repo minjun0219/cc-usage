@@ -132,7 +132,7 @@ func runStatusline(args []string) error {
 		st.ObservedAt, st.StdinLimitsSeen, st.FiveHour, st.SevenDay = now, now, five, seven
 		dirty = true
 	}
-	if core.NeedRefresh(p, useStdin, lim, &st, &uf, now) && spawnRefresh(p.Source) == nil {
+	if core.NeedRefresh(p, useStdin, lim, &st, &uf, now) && spawn(p.Source) == nil {
 		st.SpawnedAt = now
 		dirty = true
 	}
@@ -205,6 +205,10 @@ func printLines(p *config.Config, in *core.Input, v render.View) {
 	fmt.Println(strings.Join(lines, "\n"))
 }
 
+// spawn is how statusline starts a refresh. 테스트가 바꿔 끼운다 — 진짜로 띄우면
+// os.Executable() 이 테스트 바이너리라 "refresh" 인자로 테스트가 다시 돈다.
+var spawn = spawnRefresh
+
 // spawnRefresh starts `cc-usage refresh` detached so it survives statusline cancellation.
 //
 // source 는 환경변수로 넘긴다. statusline 의 --source 는 이 자식에게 가지 않으므로,
@@ -215,14 +219,21 @@ func spawnRefresh(source string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "refresh")
-	cmd.Env = append(os.Environ(), "CC_USAGE_SOURCE="+source)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	cmd := refreshCmd(exe, source)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+// refreshCmd builds the detached refresh command — 띄우지 않고 만들기만 해서
+// 무엇을 넘기는지 테스트할 수 있게 떼어 둔다.
+func refreshCmd(exe, source string) *exec.Cmd {
+	cmd := exec.Command(exe, "refresh")
+	cmd.Env = append(os.Environ(), "CC_USAGE_SOURCE="+source)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	return cmd
 }
 
 func runRefresh(args []string) error {
