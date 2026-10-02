@@ -29,7 +29,7 @@ repo 를 고치는 작업이면 이 문서가 아니라 [CLAUDE.md](CLAUDE.md)·
 command -v cc-usage && cc-usage version && cc-usage update --check
 ```
 
-이미 있으면 새로 clone 하지 않는다. `cc-usage update` 로 갱신하고 3번(설정 확인)부터 본다.
+이미 있으면 새로 clone 하지 않는다. `cc-usage update` 로 갱신하고 3번(설정 파일)부터 본다.
 
 ### 1. clone — 지울 일 없는 자리에
 
@@ -52,7 +52,7 @@ cc-usage version
 
 ### 3. 설정 파일 — `~/.config/cc-usage/config.json`
 
-**이미 있으면 덮어쓰지 않는다.** 주인이 이 머신에 맞춰 적어 둔 값이다. `cc-usage doctor` 첫 줄에 읽는 경로가 나온다.
+**이미 있으면 덮어쓰지 않는다.** 주인이 이 머신에 맞춰 적어 둔 값이다. `cc-usage doctor` 의 `config:` 줄에 읽는 경로가 나온다.
 
 없으면 만든다. 정해야 하는 것은 사실상 `source` 하나다.
 
