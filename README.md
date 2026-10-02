@@ -2,6 +2,8 @@
 
 Claude Code statusline + 크레딧 guard. 계정 하나를 상정합니다 — 설정도 cache도 한 벌입니다.
 
+> 🤖 **개인용 도구입니다.** 릴리스 없이 소스에서 빌드해 씁니다. 새 머신에 적용하는 에이전트는 [SETUP.md](SETUP.md)부터 보세요 — 설치 순서, 기존 설정과 병합하는 법, 하지 말아야 할 것이 정리돼 있습니다.
+
 ```
 ~/dev/workspaces/cc-usage · ⎇ main +3 !5 ⇡1
 Sonnet high · ctx 40% · 5h 70% (↻18:00) · $38.40 ($50.00)
@@ -56,6 +58,8 @@ $38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
 make test
 make install            # ~/.local/bin/cc-usage
 ```
+
+설정 파일·`settings.json` 연결·확인까지의 전체 순서는 [SETUP.md](SETUP.md).
 
 ## 업데이트
 

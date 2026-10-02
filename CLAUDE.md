@@ -2,6 +2,8 @@
 
 Claude Code statusline + 크레딧 guard. Go 표준 라이브러리만 사용 (외부 의존성 추가 금지).
 
+**새 머신에 설치·적용하는 작업이면 [SETUP.md](SETUP.md)를 본다.** 이 문서와 AGENTS.md 는 repo 를 고치는 작업용이다.
+
 ## 구조
 
 ```
