@@ -19,7 +19,7 @@ examples/           config, settings.json 예시
 
 ## 불변 조건 (반드시 지킬 것)
 
-1. `statusline`은 **network를 기다리지 않는다.** cc-usage 자신은 이 경로에서 API를 호출하지 않고, 갱신이 필요하면 `refresh`를 detached로 띄운 뒤 즉시 끝낸다.
+1. `statusline`은 **network를 기다리지 않는다.** cc-usage 자신은 이 경로에서 API를 호출하지 않고, 갱신이 필요하면 `refresh`를 detached로 실행한 뒤 즉시 끝낸다.
    로컬 subprocess(`git status`, `extra_commands`)는 **반드시 타임아웃을 걸고** 실행한다. 실패·타임아웃은 그 세그먼트만 생략하고 나머지 줄은 그대로 출력한다.
    `extra_commands`에는 사용자가 network를 쓰는 명령을 넣을 수 있다. 그래서 타임아웃은 반드시 지킬 이 조건의 일부다. 타임아웃은 프로세스 **그룹째** 끊어야 한다. 자식이 stdout을 물려받으면 직접 프로세스만 죽여서는 pipe가 닫히지 않아 그대로 지연이 된다.
 2. `usage.json`은 `refresh`만, `state.json`은 `statusline`만 쓴다. writer를 섞지 않는다.
@@ -88,7 +88,7 @@ keychain 기본값을 주지 않는다**(건너뛰고 `<config_dir>/.credentials
 
 ## Antigravity(`agy`) statusLine 입력 (2026-10-01, agy 1.2.14 실측)
 
-tmux로 agy를 띄워 statusLine에 stdin을 덤프하는 스크립트를 지정해 확인했다. 설정은
+tmux로 agy를 실행해 statusLine에 stdin을 덤프하는 스크립트를 지정해 확인했다. 설정은
 `~/.gemini/antigravity-cli/settings.json`의 `statusLine: {type: "command", command}`이다.
 
 - **Claude Code와 같은 꼴이다.** `model.display_name` · `workspace.current_dir` · `cwd` ·
