@@ -1,5 +1,7 @@
 # SETUP.md: 새 환경에 cc-usage 적용하기 (에이전트용)
 
+> **새로 적용하지 않는다 (2026-10-06 아카이브).** 같은 기능은 [rocky](https://github.com/minjun0219/rocky)의 `rocky statusline --full`이다. "cc-usage를 적용해 줘"를 받으면 rocky를 설치하고 `rocky.json`의 `statusline` 블록을 설정한다. 아래는 기록으로만 남긴다.
+
 이 문서는 **"cc-usage를 이 머신에 적용해 줘"** 같은 요청을 받은 에이전트가 읽는다.
 repo를 고치는 작업이면 [CLAUDE.md](CLAUDE.md)·[AGENTS.md](AGENTS.md)를 본다.
 

@@ -1,5 +1,7 @@
 # cc-usage
 
+> **아카이브됨 (2026-10-06).** 기능은 [rocky](https://github.com/minjun0219/rocky)로 옮깁니다. statusline은 `rocky statusline --full`이 같은 출력을 냅니다(cc-usage 출력을 골든 픽스처로 떠서 바이트 단위로 대조). 설정은 `rocky.json`의 `statusline` 블록입니다. usage API 갱신(크레딧)·경보 깜빡임·guard는 rocky로 옮기는 중입니다. 이 repo는 더 고치지 않습니다.
+
 Claude Code statusline + 크레딧 guard. 계정 하나를 상정합니다. 설정도 cache도 한 벌입니다.
 
 > **개인용 도구입니다.** 릴리스 없이 소스에서 빌드해 씁니다. 새 머신에 적용하는 에이전트는 [SETUP.md](SETUP.md)부터 보세요. 설치 순서, 기존 설정과 병합하는 법, 하지 말아야 할 것이 정리돼 있습니다.

@@ -1,5 +1,7 @@
 # cc-usage: Claude Code 작업 가이드
 
+> **아카이브됨 (2026-10-06).** 기능은 [rocky](https://github.com/minjun0219/rocky)로 옮겼다 — 설계는 rocky `docs/design/specs/2026-10-05-cc-usage-mirror-design.md`. 이 repo에는 변경을 받지 않는다. 아래 실측 기록은 rocky 쪽 판단의 근거로 남긴다.
+
 Claude Code statusline + 크레딧 guard. Go 표준 라이브러리만 사용 (외부 의존성 추가 금지).
 
 **새 머신에 설치·적용하는 작업이면 [SETUP.md](SETUP.md)를 본다.** 이 문서와 AGENTS.md는 repo를 고치는 작업용이다.
