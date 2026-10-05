@@ -28,6 +28,20 @@ import (
 
 var version = "dev"
 
+// NowEnv 는 테스트 전용 — RFC3339 시각을 주면 "지금" 을 그 시각으로 고정한다.
+// 리셋 시각·남은 시간처럼 시계에 따라 바뀌는 출력을 바이트 단위로 대조하려고 둔다
+// (CC_USAGE_API_URL 과 같은 자리). 비었거나 읽을 수 없으면 실제 시계를 쓴다.
+const NowEnv = "CC_USAGE_NOW"
+
+func clock() time.Time {
+	if v := os.Getenv(NowEnv); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			return t
+		}
+	}
+	return time.Now()
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, helpText())
@@ -107,7 +121,7 @@ func runStatusline(args []string) error {
 	}
 	raw, _ := io.ReadAll(io.LimitReader(os.Stdin, 4<<20))
 	in, _ := core.ParseInput(raw)
-	now := time.Now()
+	now := clock()
 	// none·agy 는 여기서 갈린다 — 판단은 core.LocalLimits 에 있다.
 	if lim, alert, local := core.LocalLimits(p, in, now); local {
 		printLines(p, in, render.View{Limits: lim, Alert: alert, Now: now})
@@ -247,7 +261,7 @@ func runRefresh(args []string) error {
 	}
 	defer unlock()
 
-	now := time.Now()
+	now := clock()
 	var uf store.UsageFile
 	var st store.StateFile
 	_ = store.Read(store.UsagePath(), &uf)
@@ -293,7 +307,7 @@ func runGuard(args []string) error {
 	if p.Source == config.SourceNone {
 		return nil // 한도를 보지 않는 모드 — 막을 근거가 없다 (fail-open)
 	}
-	now := time.Now()
+	now := clock()
 	var st store.StateFile
 	var uf store.UsageFile
 	var allow store.AllowFile
@@ -332,7 +346,7 @@ func runAllow(args []string) error {
 		if err != nil || d <= 0 {
 			return fmt.Errorf("invalid duration %q (예: 30m, 2h)", arg)
 		}
-		a.AllowUntil = time.Now().Add(d)
+		a.AllowUntil = clock().Add(d)
 		fmt.Printf("[cc-usage] %s까지 크레딧 사용 허용\n", a.AllowUntil.Format("15:04"))
 	}
 	return store.Write(store.AllowPath(), &a)
