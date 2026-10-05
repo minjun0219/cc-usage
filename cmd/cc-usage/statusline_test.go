@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"cc-usage/internal/render"
 	"cc-usage/internal/store"
 )
 
@@ -329,5 +330,31 @@ func TestStatuslineClaudeIgnoresAgyFields(t *testing.T) {
 				t.Errorf("state.json 이 없다: %v", h.cacheFiles())
 			}
 		})
+	}
+}
+
+func TestClockHonorsNowEnv(t *testing.T) {
+	t.Setenv(NowEnv, "2026-09-16T16:40:00+09:00")
+	want := time.Date(2026, 9, 16, 7, 40, 0, 0, time.UTC)
+	if got := clock(); !got.Equal(want) {
+		t.Fatalf("clock() = %v, want %v", got, want)
+	}
+	// 읽을 수 없는 값은 실제 시계로 떨어진다 — 테스트 훅이 statusline 을 깨면 안 된다.
+	t.Setenv(NowEnv, "yesterday")
+	if got := clock(); time.Since(got) > time.Minute {
+		t.Fatalf("clock() with bad env = %v, want ~now", got)
+	}
+}
+
+func TestStatuslineResetTextFollowsNowEnv(t *testing.T) {
+	// 남은 시간은 실제 시계가 아니라 CC_USAGE_NOW 로 센다 — 리셋 50시간 전으로 고정하면
+	// 날짜가 달라 남은 시간 표기가 나오고, 그 값이 고정 시각 기준이어야 한다.
+	h := newHarness(t, "stdin")
+	reset := time.Date(2030, 1, 3, 0, 0, 0, 0, time.UTC)
+	t.Setenv(NowEnv, reset.Add(-50*time.Hour).Format(time.RFC3339))
+	p := `{"session_id":"s","model":{"display_name":"Opus 5"},"workspace":{"current_dir":"` + h.dir + `"},` +
+		`"rate_limits":{"five_hour":{"used_percentage":30,"resets_at":` + strconv.FormatInt(reset.Unix(), 10) + `}}}`
+	if out, want := h.run(t, p), "("+render.Duration(50*time.Hour)+")"; !strings.Contains(out, want) {
+		t.Fatalf("output %q does not contain %q", out, want)
 	}
 }
