@@ -1,0 +1,784 @@
+//! `cc-usage statusline` — 경로·git 줄과 모델·ctx·한도 줄. statusline 자리는 실패해도 줄을 지킨다: 입력이 깨져도
+//! 성공으로 끝나고, 설정이 틀리면 무엇이 틀렸는지 한 줄만 낸다. 에러가 statusline 에 새면 사용자 화면이 망가진다.
+
+use std::io::Write;
+use std::process::{Command, Stdio};
+
+/// statusline 이 띄우는 detached 갱신이 테스트에서 **실제 토큰·실제 API 에 닿지 않게** 막는 두 겹 — 없는 keychain 항목
+/// (macOS keychain 은 HOME 과 무관해 임시 HOME 으로는 못 막는다)과 아무도 안 듣는 usage API 주소.
+const TEST_KEYCHAIN: &str = "cc-usage-test-absent";
+const DEAD_USAGE_URL: &str = "http://127.0.0.1:1/usage";
+
+/// 골든에서 마감을 적지 않은 extra 명령의 마감 — 제품 기본값(300ms)은 spawn 잠금을 기다린 시간까지 세서, CI 러너가 바쁘면
+/// 제때 끝날 명령도 잘릴 수 있다. 골든은 출력 바이트를 대조하는 자리이고, 마감에 걸리는 동작은 `extra-slow` 가 적어 둔 짧은
+/// 마감이 따로 고정한다.
+const GOLDEN_EXTRA_TIMEOUT_MS: u64 = 5_000;
+
+/// 테스트가 띄우는 바이너리를 사용자 환경에서 떼어 낸다 — 홈을 임시 디렉터리로.
+fn isolate<'a>(cmd: &'a mut Command, dir: &std::path::Path) -> &'a mut Command {
+    cmd.env("HOME", dir)
+}
+
+fn run(args: &[&str], stdin: &str) -> (i32, String, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("config.json");
+    std::fs::write(&config, r#"{}"#).unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_cc-usage"));
+    isolate(&mut cmd, dir.path());
+    let mut child = cmd
+        .args(args)
+        .env("CC_USAGE_CONFIG", &config)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+/// `statusline` 을 프로세스째 돌려 골든(`tests/fixtures/statusline-full`)과 바이트 단위로 비교한다 —
+/// 설정 블록 읽기·환경 변수(폭·색·시간대)·stdin 읽기·git 과 `extraCommands` 실행까지 실제 경로를 탄다.
+/// `CC_USAGE_UPDATE_GOLDEN=1` 이면 비교 대신 지금 출력으로 `expected.txt` 를 다시 쓴다 — 케이스 모양은 `statusline_golden_test`.
+#[test]
+fn full_replays_goldens() {
+    let update = std::env::var_os("CC_USAGE_UPDATE_GOLDEN").is_some();
+    let root =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/statusline-full");
+    let mut dirs: Vec<_> = std::fs::read_dir(&root)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    dirs.sort();
+    let mut ran = 0;
+    let mut failures = Vec::new();
+    for case_dir in &dirs {
+        let case: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(case_dir.join("case.json")).unwrap())
+                .unwrap();
+        ran += 1;
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        // 케이스의 `usage`·`state` 를 그 계정의 캐시 폴더에 그대로 심는다.
+        // 계정 파일이 있으면 그 계정의 캐시 폴더, 없으면 `_`.
+        let account = case["account"].as_str();
+        if let Some(email) = account {
+            std::fs::write(
+                home.join(".claude.json"),
+                serde_json::json!({"oauthAccount": {"emailAddress": email}}).to_string(),
+            )
+            .unwrap();
+        }
+        let bucket = cc_usage::claude_account::cache_bucket(
+            &cc_usage::claude_account::cache_slot(&home.join(".cache"), &home.join(".claude")),
+            account,
+        );
+        let seed = || {
+            for (key, file) in [("usage", "usage.json"), ("state", "state.json")] {
+                if !case[key].is_null() {
+                    std::fs::create_dir_all(&bucket).unwrap();
+                    std::fs::write(bucket.join(file), case[key].to_string()).unwrap();
+                }
+            }
+        };
+        seed();
+        // 케이스의 셸 줄·git 환경으로 repo 를 만든다(작성자·날짜 고정이라 커밋 해시까지 늘 같다).
+        let repo = case["repo"].as_array().unwrap();
+        if !repo.is_empty() {
+            let project = home.join("project");
+            std::fs::create_dir_all(&project).unwrap();
+            for line in repo {
+                let mut step = Command::new("sh");
+                step.args(["-c", line.as_str().unwrap()])
+                    .current_dir(&project)
+                    .env_clear()
+                    .env("PATH", std::env::var("PATH").unwrap_or_default())
+                    .env("HOME", &home);
+                for (k, v) in case["gitEnv"].as_object().unwrap() {
+                    step.env(k, v.as_str().unwrap());
+                }
+                let out = step.output().unwrap();
+                assert!(
+                    out.status.success(),
+                    "{line}: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
+        let config = dir.path().join("config.json");
+        // 케이스의 설정 키(snake_case — 처음 골든을 뜬 cc-usage 의 모양)를 설정 파일의 키(camelCase)로 옮긴다.
+        let extra_commands: Vec<serde_json::Value> = case["config"]["extra_commands"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|c| {
+                let timeout = c["timeout_ms"].as_u64().unwrap_or(GOLDEN_EXTRA_TIMEOUT_MS);
+                serde_json::json!({ "command": c["command"], "timeoutMs": timeout })
+            })
+            .collect();
+        let statusline = serde_json::json!({
+            "keychainService": TEST_KEYCHAIN,
+            // 골든은 크레딧 페이드 없이 뜬 것이다 — 페이드는 `limits_test` 가 따로 본다.
+            "creditFade": false,
+            "source": case["config"]["source"],
+            "alertPercent": case["config"]["alert_percent"],
+            "extraCommands": extra_commands,
+            "badges": case["config"]["badges"],
+        });
+        std::fs::write(&config, statusline.to_string()).unwrap();
+        // 바이트로 비교한다 — extra 출력은 UTF-8 이 아닐 수 있다(extra-bytes). 새 케이스는 아직 expected.txt 가 없다 —
+        // 다시 뜰 때(update)는 빈 값으로 두고 아래에서 쓴다.
+        let want = match std::fs::read(case_dir.join("expected.txt")) {
+            Err(e) if update && e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            read => read.unwrap(),
+        };
+        // 마감·파이프 유예에 기대는 케이스(extra·git)는 CI 러너가 바쁘면 한 번 빗나갈 수 있다(2026-10-12 `extra-failures`
+        // 의 `echo survivor` 가 빠짐, 이 맥에서는 부하로도 재현 안 됨) — 다르면 캐시를 다시 심고 한 번만 더 돌린다. 진짜
+        // 회귀는 두 번 다 다르다.
+        for attempt in 1..=2 {
+            if attempt > 1 {
+                seed();
+            }
+            // 환경을 비우고 케이스가 정한 것만 준다 — 사용자 터미널의 TERM·COLUMNS 가 섞이면 바이트가 달라진다.
+            let mut cmd = Command::new(env!("CARGO_BIN_EXE_cc-usage"));
+            cmd.env_clear()
+                .env("PATH", std::env::var("PATH").unwrap_or_default())
+                .env("HOME", &home)
+                .env("CC_USAGE_CONFIG", &config)
+                .env("CC_USAGE_API_URL", DEAD_USAGE_URL)
+                .env("CC_USAGE_NOW", case["now"].as_str().unwrap())
+                .env("TZ", case["tz"].as_str().unwrap());
+            for (k, v) in case["env"].as_object().unwrap() {
+                cmd.env(k, v.as_str().unwrap());
+            }
+            if let Some(source) = case["sourceEnv"].as_str() {
+                cmd.env("CC_USAGE_SOURCE", source);
+            }
+            let args = case["args"].as_array().unwrap();
+            let mut child = cmd
+                .args(["statusline"])
+                .args(args.iter().map(|a| a.as_str().unwrap()))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let stdin = case["stdin"]
+                .as_str()
+                .unwrap()
+                .replace("{{HOME}}", home.to_str().unwrap());
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(stdin.as_bytes())
+                .unwrap();
+            let out = child.wait_with_output().unwrap();
+            if update && out.status.success() {
+                std::fs::write(case_dir.join("expected.txt"), &out.stdout).unwrap();
+                break;
+            }
+            if out.stdout == want && out.status.success() {
+                break;
+            }
+            if attempt == 2 {
+                failures.push(format!(
+                    "{}\n  want {:?}\n  got  {:?}\n  err  {}",
+                    case_dir.file_name().unwrap().to_string_lossy(),
+                    String::from_utf8_lossy(&want),
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stderr)
+                ));
+            }
+        }
+    }
+    assert!(ran >= 30, "크레딧 없는 케이스가 {ran}건뿐이다");
+    assert!(
+        failures.is_empty(),
+        "{}건 다름:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// git 이 멈추면 500ms 에서 **프로세스 그룹째** 끊고 git 세그먼트만 뺀다. 가짜 git 은 자식을 하나 띄워 두는데,
+/// git 프로세스만 죽이면 그 자식이 고아로 남는다 — 1초마다 도는 자리라 쌓인다.
+#[test]
+fn full_kills_a_hung_git_with_its_process_group() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let bin = dir.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let git = bin.join("git");
+    let child_pid = dir.path().join("child.pid");
+    std::fs::write(
+        &git,
+        format!(
+            "#!/bin/sh\n[ \"$1\" = warm ] && exit 0\nsleep 10 &\necho $! > {}\nsleep 10\n",
+            child_pid.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // 새 실행 파일의 첫 실행은 macOS 검사(syspolicyd)로 수백 ms 늦을 수 있다 — 마감 전에 시작하도록 한 번 데워 둔다.
+    assert!(Command::new(&git).arg("warm").status().unwrap().success());
+    let config = dir.path().join("config.json");
+    std::fs::write(&config, r#"{"keychainService":"cc-usage-test-absent"}"#).unwrap();
+
+    let started = std::time::Instant::now();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cc-usage"))
+        .env_clear()
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .env("HOME", dir.path())
+        .env("CC_USAGE_CONFIG", &config)
+        .env("CC_USAGE_API_URL", DEAD_USAGE_URL)
+        .env("NO_COLOR", "1")
+        .args(["statusline"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(
+            br#"{"workspace":{"current_dir":"/somewhere"},"model":{"display_name":"Opus 5"}}"#,
+        )
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    let elapsed = started.elapsed();
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "/somewhere\nOpus 5 · usage …\n"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(3),
+        "마감에서 끊지 못했다 — {elapsed:?}"
+    );
+    // 가짜 git 이 띄운 자식도 같이 죽었다 — kill(pid, 0) 이 실패해야 한다(SIGKILL 이 도착할 틈을 잠깐 준다).
+    let pid: libc::pid_t = std::fs::read_to_string(&child_pid)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    // SAFETY: 시그널 0 은 존재 확인만 한다.
+    let alive = unsafe { libc::kill(pid, 0) } == 0;
+    if alive {
+        // SAFETY: 테스트가 남긴 고아를 치운다.
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+    assert!(!alive, "git 이 띄운 자식({pid})이 고아로 남았다");
+}
+
+/// `statusline --full` 한 번 — 환경을 비우고 주어진 것만 넣는다. 데몬·keychain·usage API 에 닿지 않는다.
+fn full_once(home: &std::path::Path, env: &[(&str, &str)], config: &str, stdin: &str) -> String {
+    statusline_once(home, &["statusline"], env, config, stdin)
+}
+
+/// `full_once` 와 같은 격리로 인자만 바꿔 한 번 돌린다.
+fn statusline_once(
+    home: &std::path::Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+    config: &str,
+    stdin: &str,
+) -> String {
+    let config_path = home.join("config.json");
+    std::fs::write(&config_path, config).unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_cc-usage"));
+    cmd.env_clear()
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .env("HOME", home)
+        .env("CC_USAGE_CONFIG", &config_path)
+        .env("CC_USAGE_API_URL", DEAD_USAGE_URL)
+        .env("NO_COLOR", "1")
+        .env("TZ", "UTC");
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let mut child = cmd
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(stdin.as_bytes())
+        .unwrap();
+    String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap()
+}
+
+const API_CONFIG: &str = r#"{"source":"api","keychainService":"cc-usage-test-absent"}"#;
+const NOW: &str = "2026-09-16T07:40:00Z";
+
+/// 계정 하나의 usage 캐시를 심는다 — 5분 전 응답, 5h 사용률 `used`.
+fn seed_usage(bucket: &std::path::Path, used: f64) {
+    std::fs::create_dir_all(bucket).unwrap();
+    let usage = serde_json::json!({
+        "usage": {"fetched_at": "2026-09-16T07:35:00Z", "five_hour": {"percent": used}}
+    });
+    std::fs::write(bucket.join("usage.json"), usage.to_string()).unwrap();
+}
+
+fn slot(home: &std::path::Path, config_dir: &std::path::Path) -> std::path::PathBuf {
+    cc_usage::claude_account::cache_slot(&home.join(".cache"), config_dir)
+}
+
+#[test]
+fn full_keeps_caches_apart_per_config_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let work = home.join("work-claude");
+    seed_usage(
+        &cc_usage::claude_account::cache_bucket(&slot(home, &home.join(".claude")), None),
+        42.0,
+    );
+    seed_usage(
+        &cc_usage::claude_account::cache_bucket(&slot(home, &work), None),
+        10.0,
+    );
+    let stdin = r#"{"model":{"display_name":"M"}}"#;
+    let now = [("CC_USAGE_NOW", NOW)];
+    assert_eq!(full_once(home, &now, API_CONFIG, stdin), "M · 5h 58%\n");
+    let work_env = [
+        ("CC_USAGE_NOW", NOW),
+        ("CLAUDE_CONFIG_DIR", work.to_str().unwrap()),
+    ];
+    assert_eq!(
+        full_once(home, &work_env, API_CONFIG, stdin),
+        "M · 5h 90%\n"
+    );
+}
+
+/// 같은 설정 폴더 안의 계정 전환(claude-swap · `/login`) — 계정 파일의 이메일이 바뀌면 그 계정의 캐시로 갈아탄다.
+/// 계정 파일은 1분마다(또는 한도 숫자가 바뀔 때)만 다시 읽고, 못 읽으면 계정 캐시를 덮지 않는다.
+#[test]
+fn full_follows_an_account_switch_inside_one_config_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let config_dir = home.join(".claude");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    let account = config_dir.join(".claude.json");
+    let set_email = |email: &str| {
+        std::fs::write(
+            &account,
+            format!(r#"{{"oauthAccount":{{"emailAddress":"{email}"}}}}"#),
+        )
+        .unwrap();
+    };
+    let slot = slot(home, &config_dir);
+    seed_usage(
+        &cc_usage::claude_account::cache_bucket(&slot, Some("a@example.com")),
+        42.0,
+    );
+    seed_usage(
+        &cc_usage::claude_account::cache_bucket(&slot, Some("b@example.com")),
+        10.0,
+    );
+    let stdin = r#"{"model":{"display_name":"M"}}"#;
+    let at = |t: &'static str| [("CC_USAGE_NOW", t)];
+
+    set_email("a@example.com");
+    assert_eq!(
+        full_once(home, &at("2026-09-16T07:40:00Z"), API_CONFIG, stdin),
+        "M · 5h 58%\n"
+    );
+    // 전환 직후 — 1분 안이고 한도 숫자도 그대로라 아직 a 의 캐시다.
+    set_email("b@example.com");
+    assert_eq!(
+        full_once(home, &at("2026-09-16T07:40:30Z"), API_CONFIG, stdin),
+        "M · 5h 58%\n"
+    );
+    // 1분이 지나 다시 읽으면 b 로 갈아탄다.
+    assert_eq!(
+        full_once(home, &at("2026-09-16T07:41:01Z"), API_CONFIG, stdin),
+        "M · 5h 90%\n"
+    );
+    // 계정 파일이 깨져 있으면(원자적 재작성 중 등) 계정 캐시를 덮지 않는다 — b 그대로.
+    std::fs::write(&account, "{ not json").unwrap();
+    assert_eq!(
+        full_once(home, &at("2026-09-16T07:43:00Z"), API_CONFIG, stdin),
+        "M · 5h 90%\n"
+    );
+}
+
+/// stdin 의 한도는 그 계정의 `state.json` 에 남아, stdin 이 한 번 비어도 6시간 동안 그린다.
+#[test]
+fn full_records_stdin_limits_for_the_six_hour_fallback() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let config = r#"{"source":"stdin","keychainService":"cc-usage-test-absent"}"#;
+    let now = [("CC_USAGE_NOW", NOW)];
+    let with =
+        r#"{"model":{"display_name":"M"},"rate_limits":{"five_hour":{"used_percentage":30}}}"#;
+    assert_eq!(full_once(home, &now, config, with), "M · 5h 70%\n");
+    let later = [("CC_USAGE_NOW", "2026-09-16T09:40:00Z")];
+    assert_eq!(
+        full_once(home, &later, config, r#"{"model":{"display_name":"M"}}"#),
+        "M · 5h 70%\n"
+    );
+    let bucket = cc_usage::claude_account::cache_bucket(&slot(home, &home.join(".claude")), None);
+    let state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(bucket.join("state.json")).unwrap()).unwrap();
+    assert_eq!(state["five_hour"]["percent"], 30.0);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(bucket.join("state.json"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "캐시 파일은 본인만 읽는다");
+    }
+}
+
+/// 단계가 오른 시각을 `state.json` 에 남겨야 다음 렌더가 깜빡임 구간인지 안다 — 0.7초 뒤 렌더는 꺼진 프레임이다.
+#[test]
+fn full_records_when_an_alert_rose_and_blinks_from_there() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let config = r#"{"source":"stdin","keychainService":"cc-usage-test-absent"}"#;
+    let hit =
+        r#"{"model":{"display_name":"M"},"rate_limits":{"five_hour":{"used_percentage":100}}}"#;
+    // 처음 — 켜진 프레임(배지)이고 시각을 적는다. NO_COLOR 라 배지·굵은 빨강 모두 " 0% ".
+    let first = full_once(home, &[("CC_USAGE_NOW", NOW)], config, hit);
+    assert!(first.starts_with("M · 5h  0% \n"), "{first:?}");
+    let bucket = cc_usage::claude_account::cache_bucket(&slot(home, &home.join(".claude")), None);
+    let state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(bucket.join("state.json")).unwrap()).unwrap();
+    assert_eq!(state["alert_key"], "2@5h");
+    assert_eq!(state["alert_at"], NOW);
+}
+
+/// 크레딧을 쓰기 시작하면 그 시각을 `state.json` 에 적고, 다음 렌더들이 거기서부터 옅은 색 → 원래 색으로 이어 그린다.
+#[test]
+fn full_fades_the_credit_amount_in_when_credits_start_burning() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let config = home.join("config.json");
+    std::fs::write(
+        &config,
+        r#"{"source":"stdin","keychainService":"cc-usage-test-absent"}"#,
+    )
+    .unwrap();
+    // 방금(15분 안에) 크레딧이 늘었다 — 쓰는 중.
+    let bucket = cc_usage::claude_account::cache_bucket(&slot(home, &home.join(".claude")), None);
+    std::fs::create_dir_all(&bucket).unwrap();
+    std::fs::write(
+        bucket.join("usage.json"),
+        r#"{"usage":{"fetched_at":"2026-09-16T07:39:00Z","extra":{"enabled":true,"used_credits":1160,"monthly_limit":5000}},"credits_rising_at":"2026-09-16T07:39:00Z"}"#,
+    )
+    .unwrap();
+    let render = |now: &str| {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_cc-usage"))
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env("HOME", home)
+            .env("CC_USAGE_CONFIG", &config)
+            .env("CC_USAGE_API_URL", DEAD_USAGE_URL)
+            .env("CC_USAGE_NOW", now)
+            .env("COLORTERM", "truecolor")
+            .args(["statusline"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(br#"{"model":{"display_name":"M"},"rate_limits":{"five_hour":{"used_percentage":30}}}"#)
+            .unwrap();
+        String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap()
+    };
+    // 처음 — 옅은 색(105,149,76)에서 출발하고 시각을 적는다.
+    assert!(render("2026-09-16T07:40:00Z").contains("\x1b[38;2;105;149;76m$38.40"));
+    let state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(bucket.join("state.json")).unwrap()).unwrap();
+    assert_eq!(state["credits_spending_at"], "2026-09-16T07:40:00Z");
+    // 3초 뒤 — 원래 색(82,170,23).
+    assert!(render("2026-09-16T07:40:03Z").contains("\x1b[38;2;82;170;23m$38.40"));
+}
+
+/// 폴더 아래 파일 전부(상대 경로, 정렬) — 캐시를 건드렸는지 본다.
+fn tree(root: &std::path::Path) -> Vec<String> {
+    fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                out.push(path.strip_prefix(root).unwrap().display().to_string());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out.sort();
+    out
+}
+
+/// agy 의 stdin — 1.2.14 실측 꼴. gemini 5h 86% 남음.
+const AGY_STDIN: &str = r#"{"cwd":"/w","session_id":"agy-s","product":"antigravity","model":{"display_name":"Gemini 3.8 Flash (High)"},"context_window":{"used_percentage":12},"quota":{"gemini-5h":{"remaining_fraction":0.86,"reset_time":"2026-09-16T09:00:00Z"},"3p-5h":{"remaining_fraction":1}}}"#;
+
+/// 같은 머신의 Claude 세션이 남긴 것 — 계정 파일(배지)과 그 계정의 stdin 관측(5h 70% 남음).
+fn seed_claude_session(home: &std::path::Path) {
+    std::fs::write(
+        home.join(".claude.json"),
+        r#"{"oauthAccount":{"emailAddress":"a@example.com"}}"#,
+    )
+    .unwrap();
+    let bucket = cc_usage::claude_account::cache_bucket(
+        &slot(home, &home.join(".claude")),
+        Some("a@example.com"),
+    );
+    std::fs::create_dir_all(&bucket).unwrap();
+    let state = serde_json::json!({
+        "observed_at": NOW, "stdin_limits_seen": NOW,
+        "five_hour": {"percent": 30, "resets_at": "2026-09-16T09:00:00Z"}
+    });
+    std::fs::write(bucket.join("state.json"), state.to_string()).unwrap();
+}
+
+fn config_with(statusline: &str) -> String {
+    statusline.to_string()
+}
+
+/// agy 는 source 설정과 무관하게 Claude 쪽(갱신·캐시·계정 파일)을 건드리지 않고 quota 로만 그린다 — 같은 머신 Claude
+/// 세션의 5h(70% 남음)·배지가 새면 안 된다. 갱신을 띄웠다면 잠시 뒤 usage.json 이 생기므로 기다렸다 본다.
+#[test]
+fn full_agy_never_touches_the_claude_side() {
+    for source in ["auto", "stdin", "api"] {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        seed_claude_session(home);
+        let before = tree(&home.join(".cache"));
+        let config = config_with(&format!(
+            r#"{{"source":"{source}","keychainService":"cc-usage-test-absent","badges":{{"a@example.com":{{"emoji":"🏢"}}}}}}"#
+        ));
+        let out = full_once(home, &[("CC_USAGE_NOW", NOW)], &config, AGY_STDIN);
+        assert_eq!(
+            out, "/w\nGemini 3.8 Flash (High) · ctx 12% · 5h 86% (↻09:00)\n",
+            "{source}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(
+            tree(&home.join(".cache")),
+            before,
+            "{source}: 캐시가 바뀌었다"
+        );
+    }
+}
+
+/// `--source none`·환경 변수 none 은 Claude 쪽을 하나도 건드리지 않는다. 모르는 플래그 값은 한 줄 안내만 내고 아무것도
+/// 건드리지 않는다.
+#[test]
+fn full_source_none_and_bad_flag_touch_nothing() {
+    let claude =
+        r#"{"model":{"display_name":"Opus 5"},"rate_limits":{"five_hour":{"used_percentage":30}}}"#;
+    let config = config_with(
+        r#"{"source":"auto","keychainService":"cc-usage-test-absent","badges":{"a@example.com":{"emoji":"🏢"}}}"#,
+    );
+    for (args, env, want) in [
+        (&["--source", "none"][..], None, "Opus 5\n"),
+        (&[][..], Some("none"), "Opus 5\n"),
+        (
+            &["--source", "bogus"][..],
+            None,
+            "[cc-usage] --source \"bogus\": auto|stdin|api|none 중 하나\n",
+        ),
+        // 명령줄이 틀려도 statusline 은 비지 않는다.
+        (
+            &["--source"][..],
+            None,
+            "[cc-usage] flag --source requires a value\n",
+        ),
+        // `=` 로 붙인 꼴도 받는다(Go 판의 flag 패키지와 같다).
+        (&["--source=none"][..], None, "Opus 5\n"),
+        (&["--bogus"][..], None, "[cc-usage] unknown flag: --bogus\n"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        seed_claude_session(home);
+        let before = tree(&home.join(".cache"));
+        let config_path = home.join("config.json");
+        std::fs::write(&config_path, &config).unwrap();
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_cc-usage"));
+        cmd.env_clear()
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env("HOME", home)
+            .env("CC_USAGE_CONFIG", &config_path)
+            .env("CC_USAGE_API_URL", DEAD_USAGE_URL)
+            .env("NO_COLOR", "1");
+        if let Some(env) = env {
+            cmd.env("CC_USAGE_SOURCE", env);
+        }
+        let mut child = cmd
+            .args(["statusline"])
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(claude.as_bytes())
+            .unwrap();
+        let out = String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap();
+        assert_eq!(out, want, "{args:?} {env:?}");
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(tree(&home.join(".cache")), before, "{args:?} {env:?}");
+    }
+}
+
+/// 갱신 자식은 부모가 정한 source 로 돈다 — 설정이 `none` 이어도 `--source api` 로 띄운 갱신은 실제로 조회를 시도해
+/// (토큰이 없어 실패) 그 계정의 usage.json 에 이유를 남긴다. 넘기지 않으면 자식은 설정의 `none` 을 보고 아무것도 안 한다.
+#[test]
+fn full_passes_its_source_to_the_refresh_it_spawns() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    std::fs::write(
+        home.join(".claude.json"),
+        r#"{"oauthAccount":{"emailAddress":"a@example.com"}}"#,
+    )
+    .unwrap();
+    let config = config_with(&format!(
+        r#"{{"source":"none","keychainService":"cc-usage-test-absent","credentialsFile":"{}"}}"#,
+        home.join("absent.json").display()
+    ));
+    let config_path = home.join("config.json");
+    std::fs::write(&config_path, &config).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cc-usage"))
+        .env_clear()
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .env("HOME", home)
+        .env("CC_USAGE_CONFIG", &config_path)
+        .env("CC_USAGE_API_URL", DEAD_USAGE_URL)
+        .env("CC_USAGE_SOURCE", "none")
+        .args(["statusline", "--source", "api"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"{}").unwrap();
+    child.wait().unwrap();
+    let usage = cc_usage::claude_account::cache_bucket(
+        &slot(home, &home.join(".claude")),
+        Some("a@example.com"),
+    )
+    .join("usage.json");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !usage.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let written = std::fs::read_to_string(&usage).expect("갱신이 usage.json 을 남기지 않았다");
+    assert!(written.contains("token not found"), "{written}");
+}
+
+/// `statusline refresh` 를 직접 불러도 환경 변수 `none` 이면 아무것도 하지 않는다(토큰이 있어도 조회하지 않는다).
+#[test]
+fn refresh_with_source_none_from_the_parent_is_a_noop() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    std::fs::write(
+        home.join(".claude.json"),
+        r#"{"oauthAccount":{"emailAddress":"a@example.com"}}"#,
+    )
+    .unwrap();
+    let config_path = home.join("config.json");
+    std::fs::write(
+        &config_path,
+        config_with(r#"{"source":"api","tokenEnv":"CC_USAGE_TEST_TOKEN"}"#),
+    )
+    .unwrap();
+    let status = Command::new(env!("CARGO_BIN_EXE_cc-usage"))
+        .env_clear()
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .env("HOME", home)
+        .env("CC_USAGE_CONFIG", &config_path)
+        .env("CC_USAGE_API_URL", DEAD_USAGE_URL)
+        .env("CC_USAGE_TEST_TOKEN", "t")
+        .env("CC_USAGE_SOURCE", "none")
+        .args(["refresh"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert!(
+        tree(&home.join(".cache")).is_empty(),
+        "{:?}",
+        tree(&home.join(".cache"))
+    );
+}
+
+/// 명령줄이 틀려도 statusline 은 비지 않는다 — 무엇이 틀렸는지 한 줄을 내고 성공으로 끝난다. 다른 명령의 오류는 보통 오류다.
+#[test]
+fn a_bad_statusline_command_line_prints_one_line() {
+    for args in [
+        vec!["statusline", "--bogus"],
+        vec!["statusline", "--session", "doctor", "--bogus"],
+    ] {
+        let (code, out, err) = run(&args, "");
+        assert_eq!(code, 0, "{args:?}: {err}");
+        assert!(out.starts_with("[cc-usage] "), "{args:?}: {out:?}");
+        assert_eq!(err, "", "{args:?}");
+    }
+    let (code, out, _) = run(&["doctor", "--bogus"], "");
+    assert_ne!(code, 0);
+    assert_eq!(out, "");
+}
+
+/// 다른 statusline 의 `extraCommands` 로 불린 것(`CC_USAGE_NESTED`)은 아무것도 그리지 않는다 — 자기를 끝없이 다시 띄우지 않게.
+#[test]
+fn nested_calls_draw_nothing() {
+    // 격리 헬퍼로만 부른다 — 이 동작이 깨지면 줄 전체를 그리러 가고, 그때 실제 keychain·usage API 에 닿으면 안 된다.
+    let home = tempfile::tempdir().unwrap();
+    let config = r#"{"source":"none"}"#;
+    let stdin = r#"{"workspace":{"current_dir":"/tmp"},"model":{"display_name":"Opus 5"}}"#;
+    let nested = statusline_once(
+        home.path(),
+        &["statusline"],
+        &[("CC_USAGE_NESTED", "1")],
+        config,
+        stdin,
+    );
+    assert_eq!(nested, "");
+}
+
+/// `extraCommands` 에 `cc-usage statusline` 이 들어 있어도 한 번만 그린다 — 자식은 중첩 표식을 보고 아무것도 내지 않는다.
+#[test]
+fn statusline_inside_extra_commands_does_not_recurse() {
+    let home = tempfile::tempdir().unwrap();
+    let config = serde_json::json!({
+        "source": "none",
+        "extraCommands": [
+            {"command": [env!("CARGO_BIN_EXE_cc-usage"), "statusline"], "timeoutMs": 5000},
+            {"command": ["echo", "EXTRA"], "timeoutMs": 5000}
+        ]
+    })
+    .to_string();
+    let stdin = r#"{"workspace":{"current_dir":"/tmp"},"model":{"display_name":"Opus 5"}}"#;
+    let out = statusline_once(home.path(), &["statusline"], &[], &config, stdin);
+    assert_eq!(out, "/tmp\nOpus 5\nEXTRA\n");
+}

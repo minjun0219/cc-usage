@@ -1,6 +1,6 @@
 # AGENTS.md: cc-usage 작업 방식
 
-> **아카이브됨 (2026-10-06).** 작업 방식은 기록으로만 남긴다. 새 작업은 rocky에서 한다.
+> **다시 살림 (2026-11-10).** Go 에서 Rust 로 바꿨다(rocky 의 statusline 구현을 가져왔다). 아래 규칙은 그대로 쓴다 — 게이트·측정 기록만 Rust 기준으로 고쳤다.
 
 프로젝트 구조와 불변 조건은 [CLAUDE.md](CLAUDE.md)에 있다. 여기는 **어떻게 일하는가**만 적는다.
 
@@ -10,9 +10,9 @@
 
 ### 의존성 최소화
 
-`CLAUDE.md`의 "외부 의존성 추가 금지"를 **런타임까지** 같은 기준으로 본다. `jq`·`python` 같은 도구를 statusline 경로에서 실행하지 않는다. 그 도구가 없는 환경에서 줄이 비면 안 되고, 프로세스 하나가 그대로 지연이다. JSON은 `encoding/json`으로 in-process에서 읽는다.
+크레이트 의존성은 `Cargo.toml` 에 있는 것(`serde` · `serde_json` · `chrono` · `ureq` · `libc` · `ring`, 개발용 `tempfile`)만 쓴다. 새로 들이려면 표준 라이브러리나 이미 의존 그래프에 있는 크레이트로 안 되는지 먼저 보고, 그래도 필요하면 따로 묻는다. 같은 기준을 **런타임까지** 적용한다. `jq`·`python` 같은 도구를 statusline 경로에서 실행하지 않는다. 그 도구가 없는 환경에서 줄이 비면 안 되고, 프로세스 하나가 그대로 지연이다. JSON은 `serde_json`으로 in-process에서 읽는다.
 
-예외는 `extra_commands`다. 거기서 실행하는 명령은 사용자가 고른 것이고, 없으면 그 세그먼트만 조용히 빠지게 되어 있다. 그래서 **cc-usage 코드는 그 명령들이 무엇인지 몰라야 한다.** 특정 도구를 아는 지식이 들어오는 순간 그 repo의 변경이 이 repo를 깬다.
+예외는 `extraCommands`다. 거기서 실행하는 명령은 사용자가 고른 것이고, 없으면 그 세그먼트만 조용히 빠지게 되어 있다. 그래서 **cc-usage 코드는 그 명령들이 무엇인지 몰라야 한다.** 특정 도구를 아는 지식이 들어오는 순간 그 repo의 변경이 이 repo를 깬다.
 
 ### 성능
 
@@ -59,7 +59,8 @@ macOS에서 프로세스 하나 띄우는 바닥값이 2.62 ms다. 세 컴파일
 
 같은 질문이 다시 나오면 처음부터 측정하지 말고 여기부터 본다. 재현 방법과 밟은 함정은 각 항목에 있다.
 
-- **Rust 구현**: 브랜치 `spike/rust-hotpath`, 재현은 `sh spike/rust/bench.sh`. 핫패스 5.99 → **3.27 ms**, 바이너리 8.42 → **0.42 MB**. 다만 전체 렌더로는 **-12%**(초당 2회 기준 0.5% CPU)이고, `git`(7.2 ms)과 extra(18.9 ms)는 언어와 무관해 그대로다. 1,968줄 + 테스트 37개 재작성 대비 맞지 않아 **Rust 구현으로 바꾸지 않는다.** Rust 표준 라이브러리에 JSON도 타임존도 없어 `serde`를 도입해야 하는 것도 걸린다. **다시 볼 조건은 아래 cache 층을 넣었을 때다.** 렌더에 핫패스만 남으면 같은 2.7 ms가 전체의 45%가 된다.
+- **Rust 구현**: 브랜치 `spike/rust-hotpath`, 재현은 `sh spike/rust/bench.sh`. 핫패스 5.99 → **3.27 ms**, 바이너리 8.42 → **0.42 MB**. 다만 전체 렌더로는 **-12%**(초당 2회 기준 0.5% CPU)이고, `git`(7.2 ms)과 extra(18.9 ms)는 언어와 무관해 그대로다. 그때(2026-09)는 재작성 비용 대비 맞지 않아 Go 로 남겼다.
+  **2026-11-10에 Rust 로 바꿨다.** 이유는 성능이 아니라 이미 rocky 에 Rust 구현이 있어서다(재작성 비용이 0에 가깝고, Go 판보다 기능이 많다 — 계정별 cache, keychain 이름 규칙, 크레딧 페이드, `dirLink`, ctx 색 구간). `serde` 를 들인 것도 이때 받아들였다. 위 숫자는 Go 판과 견줄 기준선으로 남긴다 — Rust 판을 재면 이 표 옆에 적는다.
 
 **전체 렌더가 50 ms를 넘기 시작하면** extra 출력을 cache에 적재하고 statusline은 cache만 읽는 층을 넣을 때다. 그전에는 라이브 반응성이 더 가치 있다.
 
@@ -86,8 +87,12 @@ PR을 열었으면 **Codex 봇 리뷰를 받고 나서** 머지한다. 열자마
 CI는 CodeQL만 돌리고 테스트는 돌리지 않는다. 그래서 `make test`가 테스트의 **유일한 층**이고 필수다.
 
 ```bash
-make test     # go vet ./... + go test ./...
+make test     # cargo fmt --all --check + cargo clippy --all-targets -- -D warnings + cargo test
 ```
+
+출력을 일부러 바꾸면 `CC_USAGE_UPDATE_GOLDEN=1 cargo test full_replays_goldens` 로 골든(`tests/fixtures/statusline-full/*/expected.txt`)을 다시 쓰고 diff 를 눈으로 본다. 새 케이스는 폴더 + `case.json`(필드는 `tests/it/statusline_golden_test.rs` 머리 주석)을 만들고 같은 명령으로 뜬다.
+
+리눅스 컨테이너(PID 1 이 고아를 거두지 않는 곳)에서는 `full_kills_a_hung_git_with_its_process_group` 가 거짓으로 실패한다 — 죽인 `sleep` 이 좀비로 남아서다. 맥에서는 통과해야 한다.
 
 통과하기 전에는 커밋하지 않는다. "통과했다"는 실제로 돌려 본 뒤에만 쓴다.
 
@@ -121,11 +126,12 @@ make preview
 cc-usage version
 ```
 
-여기 `-dirty`가 보이면 규칙을 어긴 것이다. `Makefile`의 `git describe --dirty`가 이미 버전에 그 표시를 붙인다.
+여기 `-dirty`가 보이면 규칙을 어긴 것이다. `build.rs`의 `git describe --dirty`가 이미 버전에 그 표시를 붙인다.
 
 ## API 없이 end-to-end 확인
 
 - `CC_USAGE_API_URL`로 가짜 서버 지정 (테스트 전용)
 - `CC_USAGE_NOW`(RFC3339)로 "지금" 을 고정 (테스트 전용) — 리셋 표기처럼 시계에 따라 바뀌는 출력을 대조할 때
-- 설정에 `token_env`를 지정해 keychain 우회
+- 설정에 `tokenEnv`를 지정해 keychain 우회
 - `HOME` / `XDG_CACHE_HOME`을 임시 디렉터리로 지정
+- 설정에 없는 `keychainService`를 적는다 — macOS keychain 은 HOME 과 무관해 임시 HOME 만으로는 실제 token 을 못 막는다

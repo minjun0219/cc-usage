@@ -1,5 +1,2 @@
-bin/
-*.test
-.DS_Store
 target/
-dist/
+.DS_Store

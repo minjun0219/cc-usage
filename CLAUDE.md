@@ -1,34 +1,53 @@
 # cc-usage: Claude Code 작업 가이드
 
-> **아카이브됨 (2026-10-06).** 기능은 [rocky](https://github.com/minjun0219/rocky)로 옮겼다 — 설계는 rocky `docs/design/specs/2026-10-05-cc-usage-mirror-design.md`. 이 repo에는 변경을 받지 않는다. 아래 실측 기록은 rocky 쪽 판단의 근거로 남긴다.
+> **다시 살림 (2026-11-10).** 2026-10-06에 기능을 rocky(`rocky statusline`)로 옮기고 아카이브했다가, rocky 없이 쓰려고
+> rocky 의 Rust 구현(`crates/rocky-core` · `crates/rocky-cli` 의 statusline 부분)을 그대로 가져와 Go 를 Rust 로 바꿨다. 모듈 이름을
+> rocky 와 같게 둬 두 레포를 견주기 쉽게 한다. 아래 실측 기록은 Go 판 시절의 것이고 판단 근거로 남긴다.
 
-Claude Code statusline + 크레딧 guard. Go 표준 라이브러리만 사용 (외부 의존성 추가 금지).
+Claude Code statusline + 크레딧 guard. Rust 단일 크레이트(lib `cc_usage` + bin `cc-usage`). 의존성은 `Cargo.toml` 에 적힌 것만 —
+새 런타임 의존성은 따로 논의한다(AGENTS.md "의존성 최소화").
 
 **새 머신에 설치·적용하는 작업이면 [SETUP.md](SETUP.md)를 본다.** 이 문서와 AGENTS.md는 repo를 고치는 작업용이다.
 
 ## 구조
 
 ```
-cmd/cc-usage/          subcommand 진입점 (statusline, guard, allow, refresh, probe, doctor, config, update) · 도움말(help.go)
-internal/config/    설정 로딩, 기본값
-internal/store/     cache 파일 모델, atomic write, flock
-internal/auth/      token 읽기 (read-only), keychain 후보 목록
-internal/api/       비공식 /api/oauth/usage 호출 및 파싱
-internal/core/      순수 판단 로직 (stdin 파싱, 모드 선택, refresh 필요 여부, 크레딧 baseline, guard)
-internal/render/    statusline 문자열 생성
-examples/           config, settings.json 예시
+src/main.rs               명령 입구 (statusline, guard, allow, refresh, probe, doctor, config, update, version) · 플래그 파서
+src/help.rs               도움말 · `cc-usage config` 의 필드 표
+src/config.rs             설정 파일(`config.json`, camelCase — rocky `rocky.json` 의 `statusline` 블록과 같은 모양)
+src/limits.rs             순수 판정: stdin 파싱, 모드 선택, refresh 필요 여부, 크레딧 baseline, 경보 (+ limits/agy.rs, limits/guard.rs)
+src/claude_account.rs     순수 판정: 세션이 어느 계정인가, cache 자리, keychain 이름, token 파싱
+src/statusline/           순수 렌더: full(줄) · width(표시 폭) · git(porcelain 파싱) · extra(extraCommands 정의·치환)
+src/commands.rs           `statusline` 을 그리는 배선
+src/statusline_cache.rs   cache 파일 읽고 쓰기(account/state/usage.json, 0600, atomic)
+src/statusline_refresh.rs usage API 1회 조회(detached, flock, backoff), token 찾기(read-only)
+src/statusline_guard.rs   guard · allow
+src/statusline_doctor.rs  probe · doctor
+src/bounded.rs            마감 있는 하위 프로세스(그룹째 kill) — git 과 extraCommands
+src/update.rs             `update` — 소스 체크아웃에서 pull → cargo test → release 빌드 → 설치
+tests/it/                 통합 테스트(실행 파일 하나 — 새 파일은 tests/it/main.rs 에 mod 로 단다)
+tests/fixtures/statusline-full/   골든 픽스처 — 출력을 ANSI 까지 고정한다
+config.schema.json        설정 JSON Schema — src/config.rs 와 함께 움직인다
+examples/                 config, settings.json 예시, preview.sh
 ```
 
 ## 불변 조건 (반드시 지킬 것)
 
 1. `statusline`은 **network를 기다리지 않는다.** cc-usage 자신은 이 경로에서 API를 호출하지 않고, 갱신이 필요하면 `refresh`를 detached로 실행한 뒤 즉시 끝낸다.
-   로컬 subprocess(`git status`, `extra_commands`)는 **반드시 타임아웃을 걸고** 실행한다. 실패·타임아웃은 그 세그먼트만 생략하고 나머지 줄은 그대로 출력한다.
-   `extra_commands`에는 사용자가 network를 쓰는 명령을 넣을 수 있다. 그래서 타임아웃은 반드시 지킬 이 조건의 일부다. 타임아웃은 프로세스 **그룹째** 끊어야 한다. 자식이 stdout을 물려받으면 직접 프로세스만 죽여서는 pipe가 닫히지 않아 그대로 지연이 된다.
+   로컬 subprocess(`git status`, `extraCommands`)는 **반드시 타임아웃을 걸고** 실행한다. 실패·타임아웃은 그 세그먼트만 생략하고 나머지 줄은 그대로 출력한다.
+   `extraCommands`에는 사용자가 network를 쓰는 명령을 넣을 수 있다. 그래서 타임아웃은 반드시 지킬 이 조건의 일부다. 타임아웃은 프로세스 **그룹째** 끊어야 한다. 자식이 stdout을 물려받으면 직접 프로세스만 죽여서는 pipe가 닫히지 않아 그대로 지연이 된다.
+   spawn 은 뮤텍스로 한 번에 하나씩 한다 — macOS 에는 `pipe2` 가 없어 동시 spawn 이 파이프 끝을 남의 자식에게 넘길 수 있다.
 2. `usage.json`은 `refresh`만, `state.json`은 `statusline`만 쓴다. writer를 섞지 않는다.
 3. credential 파일과 keychain은 읽기만 한다. token refresh 구현 금지.
 4. 비공식 API 응답의 모든 필드는 optional로 취급한다. 파싱 실패로 statusline이 비면 안 된다.
 5. `guard`는 설정 오류나 데이터 없음에서 차단하지 않는다 (fail-open).
-6. 판단 로직은 `internal/core`에 두고 `now time.Time`을 인자로 받아 테스트 가능하게 유지한다.
+6. 판단 로직은 순수 모듈(`limits` · `claude_account` · `statusline`)에 두고 "지금"(`DateTime<Utc>`)을 인자로 받아 테스트 가능하게 유지한다.
+7. 계정은 **세션 환경**으로 정한다: 설정 폴더 = `CLAUDE_CONFIG_DIR` > `configDir` > `~/.claude`. `CLAUDE_CONFIG_DIR` 이면 그 폴더의
+   `.claude.json` 하나만 본다(못 읽어도 다른 후보로 넘어가지 않는다 — 다른 계정의 이메일을 집는다). 이 우선순위를 바꾸면 다른
+   계정의 한도를 그리는 회귀가 난다. cache 는 `<cache>/cc-usage/<설정 폴더 해시>/<이메일 해시>/` 로 나눈다.
+8. `none` 과 agy 는 Claude 쪽(token·API·cache·계정 파일)을 읽지도 쓰지도 않는다 — 같은 머신 Claude 세션의 숫자가 다른 호스트 줄에 그려진다.
+9. 테스트는 실제 token·API 에 닿으면 안 된다. macOS keychain 은 HOME 과 무관하므로 statusline 을 그리는 테스트는 없는
+   `keychainService` 와 테스트 전용 `CC_USAGE_API_URL`(죽은 주소)을 함께 건다.
 
 ## 개발
 
@@ -70,8 +89,12 @@ keychain에서 읽히는 것을 확인했다(`source=keychain`).
 CLI가 Mach-O 바이너리라 문자열도 잡히지 않는다. 알아내려면 새 config dir로 한 번 로그인해야 하는데
 token이 새로 발급되는 부작용이 있다.
 
+> **이후 (2026-10-06, rocky 에서 실측).** 접미사는 `sha256(CLAUDE_CONFIG_DIR 값)` 앞 8자리다(Claude Code 2.1.289).
+> 지금 코드는 이 규칙으로 찾는다(`claude_account::keychain_service`). 아래 "건너뛴다" 는 Go 판의 동작이다. keychain token 이
+> 만료됐고 파일 token 이 유효하면 파일이 이긴다(낡은 keychain 항목이 실측으로 있었다).
+
 **규칙을 몰라도 막히지 않는다.** `cc-usage doctor`가 실제 keychain을 조회해 후보를 전부 나열하므로,
-보고 `keychain_service`에 적으면 된다. 규칙을 추론해 자동으로 고르려 들지 않는다.
+보고 `keychainService`에 적으면 된다. 규칙을 추론해 자동으로 고르려 들지 않는다.
 틀린 추론으로 다른 계정의 token을 가져오는 것보다 사용자가 보고 고르는 편이 낫다.
 
 ### `CLAUDE_CONFIG_DIR`가 설정값보다 우선한다 (고침)

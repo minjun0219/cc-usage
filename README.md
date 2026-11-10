@@ -1,8 +1,8 @@
 # cc-usage
 
-> **아카이브됨 (2026-10-06).** 기능은 [rocky](https://github.com/minjun0219/rocky)로 옮깁니다. statusline은 `rocky statusline --full`이 같은 출력을 냅니다(cc-usage 출력을 골든 픽스처로 떠서 바이트 단위로 대조). 설정은 `rocky.json`의 `statusline` 블록입니다. usage API 갱신(크레딧)·경보 깜빡임·guard는 rocky로 옮기는 중입니다. 이 repo는 더 고치지 않습니다.
+> **다시 살렸습니다 (2026-11-10).** 2026-10-06에 기능을 [rocky](https://github.com/minjun0219/rocky)의 `rocky statusline`으로 옮기고 아카이브했다가, rocky 없이 쓰려고 rocky의 Rust 구현을 그대로 가져와 이 레포를 Rust로 바꿨습니다. 설정 모양도 rocky `rocky.json`의 `statusline` 블록과 같습니다(camelCase).
 
-Claude Code statusline + 크레딧 guard. 계정 하나를 상정합니다. 설정도 cache도 한 벌입니다.
+Claude Code statusline + 크레딧 guard. 설정은 한 벌이고, cache는 Claude Code 설정 폴더와 로그인된 계정(이메일)마다 저절로 갈립니다.
 
 > **개인용 도구입니다.** 릴리스 없이 소스에서 빌드해 씁니다. 새 머신에 적용하는 에이전트는 [SETUP.md](SETUP.md)부터 보세요. 설치 순서, 기존 설정과 병합하는 법, 하지 말아야 할 것이 정리돼 있습니다.
 
@@ -26,11 +26,11 @@ $38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
 | `source` | 5h/7d 출처 | usage API 호출 시점 |
 | --- | --- | --- |
 | `stdin` (Pro/Max) | statusline stdin의 `rate_limits` | 5h 또는 7d가 **100%일 때만** (크레딧 조회) |
-| `api` (Team) | usage API | `poll_seconds` 주기 (기본 300초) |
+| `api` (Team) | usage API | `pollSeconds` 주기 (기본 300초) |
 | `auto` | 최근 6시간 내 stdin에 `rate_limits`가 보였으면 stdin, 아니면 api | 위 규칙 |
 | `none` | 다루지 않음(경로·git·모델·ctx만 표시) | 호출하지 않음 (token·cache도 보지 않음) |
 
-- `cc-usage statusline`은 **network를 기다리지 않습니다.** usage API는 이 경로에서 호출하지 않고, 갱신이 필요하면 `cc-usage refresh`를 detached로 실행한 뒤 즉시 종료합니다. 로컬 subprocess(`git status`, `extra_commands`)는 타임아웃을 걸고 실행합니다. 느리거나 실패하면 그 세그먼트만 빠집니다. `extra_commands`에 network를 쓰는 명령을 넣는 것은 설정하는 쪽의 선택입니다. 그 지연은 타임아웃이 막습니다.
+- `cc-usage statusline`은 **network를 기다리지 않습니다.** usage API는 이 경로에서 호출하지 않고, 갱신이 필요하면 `cc-usage refresh`를 detached로 실행한 뒤 즉시 종료합니다. 로컬 subprocess(`git status`, `extraCommands`)는 타임아웃을 걸고 실행합니다. 느리거나 실패하면 그 세그먼트만 빠집니다. `extraCommands`에 network를 쓰는 명령을 넣는 것은 설정하는 쪽의 선택입니다. 그 지연은 타임아웃이 막습니다.
 - `refresh`는 lock으로 동시에 하나만 실행됩니다. 실패하면 backoff 간격을 1m부터 두 배씩 늘리고 30m에서 자릅니다. 429에는 `Retry-After`를 따릅니다.
 - **7d는 사용률 70% 아래면 나오지 않습니다.** 주 관심사는 5h이고 7d 리셋은 며칠 뒤라 자리만 차지합니다. 색이 노래지기 시작하는 지점부터 올라오고, 경보를 올린 window는 임계와 무관하게 나옵니다.
 - **크레딧 금액은 "남은 값"입니다.** 5h·7d가 남은 비율인데 크레딧만 쓴 금액이면 방향이 엇갈려 뒤집어 읽게 됩니다. 색도 window와 같은 규칙으로 골라서 90%를 쓴 상태가 흐린 회색으로 조용히 지나가지 않습니다. 한도는 괄호로 감싸 흐리게 둡니다(`$9.83 ($100.00)`). window의 `86% (↻14:40)`과 같은 꼴이라 값 뒤의 괄호는 부가 정보라는 규칙이 줄 전체에서 한결같습니다.
@@ -44,21 +44,23 @@ $38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
 
   | 가장 급한 window의 사용률 | 간격 |
   | --- | --- |
-  | 70% 미만 (여유) | `poll_seconds` × 3 |
-  | 70% 이상 (임박) | `poll_seconds` |
-  | 100% (소진) | `credit_poll_seconds` |
+  | 70% 미만 (여유) | `pollSeconds` × 3 |
+  | 70% 이상 (임박) | `pollSeconds` |
+  | 100% (소진) | `creditPollSeconds` |
 
-  임박 경고를 꺼도(`alert_percent: 0`) polling은 여전히 촘촘해져야 하므로 경계를 `alert_percent`와 따로 둡니다. 70%는 색이 노래지기 시작하는 지점과 같아서 화면 표시와 동작의 기준이 일치합니다.
+  임박 경고를 꺼도(`alertPercent: 0`) polling은 여전히 촘촘해져야 하므로 경계를 `alertPercent`와 따로 둡니다. 70%는 색이 노래지기 시작하는 지점과 같아서 화면 표시와 동작의 기준이 일치합니다.
 - 한도 100%가 처음 관측된 시점의 `used_credits`를 baseline으로 저장해서 "이번 window에서 쓴 크레딧"을 계산합니다. 첫 조회 전 소진분은 포함되지 않습니다.
 - `5h`/`7d` 숫자는 **남은 비율**입니다(100 − 사용률). 쓴 양보다 남은 양이 "지금 뭘 할 수 있나"에 바로 답하기 때문입니다. 색은 사용률로 고르므로 숫자가 작아질수록 빨개집니다. 괄호는 **언제 풀리는지** 보여 줍니다. `↻18:00`은 8칸 고정이라 남은 시간이 줄어도 뒤가 밀리지 않고 `↻`가 "여기서 다시 시작한다"를 바로 전합니다. 하루를 넘기면 시각만으로는 어느 날인지 모르므로 남은 시간(`2d 4h`)을 표시합니다.
 - 경로 줄은 stdin의 `workspace.current_dir`에서 나옵니다. 브랜치명, 변경 파일 수(`=` conflict / `+` staged / `!` unstaged), ahead(`⇡`)/behind(`⇣`)는 `git status --porcelain=v2 --branch --untracked-files=no` **한 번**으로 읽습니다. 개수는 porcelain=v2가 파일당 한 줄을 출력하고 `XY` 필드가 staged/unstaged를 구분해 주므로 추가 git 호출이 없습니다. untracked는 스캔 비용 때문에 세지 않습니다(`--untracked-files=no`). git repo가 아니거나 500ms를 넘기면 세그먼트만 빠집니다.
-- token은 **읽기 전용**입니다 (token_env → macOS keychain → `<config_dir>/.credentials.json`). 만료 시 갱신하지 않고, Claude Code가 다음 요청에서 갱신합니다.
+- token은 **읽기 전용**입니다 (`tokenEnv` → macOS keychain → `<configDir>/.credentials.json`). keychain token이 만료됐고 파일 token이 유효하면 파일 쪽을 씁니다. 만료 시 갱신하지 않고, Claude Code가 다음 요청에서 갱신합니다.
 
 ## 설치
 
+Rust stable(`rustup`)이 필요합니다. `rust-toolchain.toml`이 버전을 고릅니다.
+
 ```bash
-make test
-make install            # ~/.local/bin/cc-usage
+make test               # cargo fmt --check + clippy -D warnings + cargo test
+make install            # cargo build --release → ~/.local/bin/cc-usage
 ```
 
 설정 파일·`settings.json` 연결·확인까지의 전체 순서는 [SETUP.md](SETUP.md)에 있습니다.
@@ -67,68 +69,61 @@ make install            # ~/.local/bin/cc-usage
 
 ```bash
 cc-usage update --check   # 받지 않고 뒤처졌는지만 본다
-cc-usage update           # fetch → pull --ff-only → make test → make build → 설치
+cc-usage update           # fetch → pull --ff-only → cargo test → cargo build --release → 설치
 ```
 
 **자동이 아닙니다.** 직접 실행할 때만 업데이트합니다. 세션 도중에 동작이 조용히 바뀌면 설정에는 옛 플래그가 남아 있는데 바이너리는 그 플래그를 모르는 상태가 됩니다. 실제로 한 번 겪었습니다.
 
-소스 경로는 `make install`을 실행한 위치가 **빌드 시점에 바이너리에 기록됩니다**. 적어 줄 설정이 없습니다.
+소스 경로는 빌드한 체크아웃(`CARGO_MANIFEST_DIR`)이 **빌드 시점에 바이너리에 기록됩니다**. 적어 줄 설정이 없습니다.
 
-갱신하는 대상은 **지금 실행 중인 그 파일**입니다(`os.Executable()`). 기본이 아닌 `PREFIX`에 설치했거나 바이너리를 옮겼어도 맞는 파일이 갱신되고, 심링크로 실행했으면 링크가 가리키는 실제 파일을 갱신합니다. 결과 줄에 설치 경로를 함께 출력합니다.
+갱신하는 대상은 **지금 실행 중인 그 파일**입니다(`std::env::current_exe`). 기본이 아닌 `PREFIX`에 설치했거나 바이너리를 옮겼어도 맞는 파일이 갱신되고, 심링크로 실행했으면 링크가 가리키는 실제 파일을 갱신합니다. 결과 줄에 설치 경로를 함께 출력합니다.
 
-**하지 않는 경우**: 소스 경로가 기록되지 않은 바이너리 · 소스가 사라졌거나 git repo가 아님 · **upstream 없음**(모르는 것을 "최신"이라 말하지 않습니다) · 커밋하지 않은 변경이 있음 · 갈라짐(`--ff-only`) · `make test` 실패 · `make build` 실패. 어느 경우든 설치까지 가지 않습니다.
+**하지 않는 경우**: 소스가 사라졌거나 git repo가 아님 · **upstream 없음**(모르는 것을 "최신"이라 말하지 않습니다) · 커밋하지 않은 변경이 있음 · 갈라짐(`--ff-only`) · `cargo test` 실패 · 빌드 실패. 어느 경우든 설치까지 가지 않습니다.
 
 ## 설정
 
 ### 계정 나누기
 
-cc-usage는 **설정 파일 하나 = 계정 하나**입니다. 계정을 여럿 보려면 설정을 나누는 게 아니라 **프로세스를 나눕니다.**
+**따로 할 일이 없습니다.** cc-usage는 statusline을 띄운 세션의 환경으로 계정을 판단합니다. 설정 폴더는 `CLAUDE_CONFIG_DIR` > 설정의 `configDir` > `~/.claude` 순이고, 계정은 그 폴더의 `.claude.json`에 있는 이메일입니다. cache는 `<XDG_CACHE_HOME 또는 ~/.cache>/cc-usage/<설정 폴더 해시>/<이메일 해시>/`로 저절로 갈리므로, 같은 폴더 안에서 `/login`으로 계정을 바꿔도 이전 계정의 한도·크레딧 baseline이 남지 않습니다.
 
 ```sh
 # 개인 (기본)
 claude
 
-# 회사 — 설정도 cache 도 통째로 갈린다
-CLAUDE_CONFIG_DIR=~/.claude-work \
-CC_USAGE_CONFIG=~/.config/cc-usage/work.json \
-XDG_CACHE_HOME=~/.cache/cc-usage-work \
-  claude
+# 회사 — CLAUDE_CONFIG_DIR 하나만 주면 token·계정·cache 가 그쪽을 따른다
+CLAUDE_CONFIG_DIR=~/.claude-work claude
 ```
 
-**셋을 함께 주는 것이 중요합니다.** `CLAUDE_CONFIG_DIR`만 바꾸면 Claude Code 계정만 갈리고 cc-usage는 같은 설정·같은 cache를 씁니다. 그러면 한도·크레딧 baseline·경보 상태가 두 계정 사이에 섞입니다.
+keychain 항목 이름도 Claude Code 규칙(`CLAUDE_CONFIG_DIR`이 있으면 `Claude Code-credentials-<sha256(값) 앞 8자리>`)으로 찾습니다(2026-10-06 실측). 설정의 `keychainService`·`credentialsFile`은 `configDir`(기본 `~/.claude`) 세션에만 씁니다 — 다른 폴더의 세션에 쓰면 다른 계정의 token을 집기 때문입니다.
 
-머신이 갈리면(회사 맥 / 집 맥) 각 머신에 설정 하나씩 두면 되고, 계정 타입이 다르면 `source`만 각자 적습니다.
+`guard` 해제 파일(`allow.json`)은 계정과 상관없이 하나입니다. 막힌 세션과 다른 환경의 터미널에서 `cc-usage allow`를 불러도 풀리게 하려는 것입니다.
+
+설정 자체를 머신마다 다르게 두려면 `CC_USAGE_CONFIG`로 다른 파일을 가리킵니다.
 
 ### 1. `~/.config/cc-usage/config.json`
 
-[`examples/config.json`](examples/config.json)을 참고하세요. 주요 필드:
+[`examples/config.json`](examples/config.json)을 참고하세요. rocky를 쓰던 머신이면 `rocky.json`의 `statusline` 블록 **안쪽**을 이 파일의 최상위로 그대로 옮기면 됩니다. JSON Schema는 [`config.schema.json`](config.schema.json)입니다. 주요 필드:
 
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
-| `config_dir` | `~/.claude` | Claude Code의 `CLAUDE_CONFIG_DIR` |
+| `configDir` | `~/.claude` | Claude Code 설정 폴더. 세션의 `CLAUDE_CONFIG_DIR`가 이깁니다 |
 | `source` | `auto` | `stdin` / `api` / `auto` / `none`. statusline에서는 `$CC_USAGE_SOURCE`와 `--source`가 우선합니다(guard는 설정 파일만 봅니다) |
-| `keychain_service` | `Claude Code-credentials` | macOS keychain 항목 이름 |
-| `credentials_file` | `<config_dir>/.credentials.json` | Linux 등 keychain이 없을 때 |
-| `token_env` | – | 이 환경변수에 token이 있으면 우선 사용 |
-| `poll_seconds` | 300 | api 모드 polling 주기 (여유 구간에서는 3배로 늘어납니다) |
-| `credit_poll_seconds` | 300 | 한도 소진 후 크레딧 조회 주기 |
-| `credit_divisor` | 100 | `used_credits` 단위 환산 (cent 가정) |
+| `keychainService` | `Claude Code-credentials` | macOS keychain 항목 이름. `configDir` 세션에만 씁니다 |
+| `credentialsFile` | `<configDir>/.credentials.json` | Linux 등 keychain이 없을 때 |
+| `tokenEnv` | – | 이 환경변수에 token이 있으면 우선 사용 |
+| `pollSeconds` | 300 | api 모드 polling 주기 (여유 구간에서는 3배로 늘어납니다) |
+| `creditPollSeconds` | 300 | 한도 소진 후 크레딧 조회 주기 |
+| `creditDivisor` | 100 | `used_credits` 단위 환산 (cent 가정) |
 | `currency` | `$` | 표시 통화 기호 |
-| `always_show_credits` | false | 크레딧이 0이어도 줄 표시. stdin 모드에서는 한도 전에도 API를 호출하게 됩니다 |
+| `creditFade` | true | 크레딧을 안 쓸 때 금액을 옅은 색으로, 쓰기 시작하면 3초에 걸쳐 원래 색으로 |
+| `alwaysShowCredits` | false | 크레딧이 0이어도 줄 표시. stdin 모드에서는 한도 전에도 API를 호출하게 됩니다 |
 | `badges` | – | 로그인된 계정을 이메일로 알아보는 표시 (아래 참고) |
-| `alert_percent` | 90 | 이 %를 넘으면 "임박" 강조. **`0`이면 임박 경고를 끄고** 소진(100%)만 강조 |
+| `alertPercent` | 90 | 이 %를 넘으면 "임박" 강조. **`0`이면 임박 경고를 끄고** 소진(100%)만 강조 |
 | `guard` | false | `cc-usage guard` 활성화 |
-| `extra_commands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |
+| `dirLink` | – | 경로를 OSC 8 링크로 감쌉니다(예: `vscode://file{{cwd}}`). 터미널에서 Cmd+클릭 |
+| `extraCommands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |
 
 머신이 여럿이면(회사·집) **각 머신에 `config.json`을 하나씩** 둡니다. 계정 타입이 달라도 `source`만 각자 적으면 됩니다. 회사 Team 계정은 `api`, 집 Pro/Max는 `stdin`입니다. 나머지 설정(색은 코드, 표기는 코드)은 같은 바이너리를 쓰는 한 저절로 같습니다.
-
-한 머신에서 계정을 여럿 보려면 설정을 나누는 게 아니라 **프로세스를 나눕니다.** `CC_USAGE_CONFIG`와 `XDG_CACHE_HOME`을 다른 경로로 주면 설정도 cache도 모두 갈립니다.
-
-```bash
-CC_USAGE_CONFIG=~/.config/cc-usage/work.json \
-XDG_CACHE_HOME=~/.cache/cc-usage-work \
-  cc-usage statusline
-```
 
 #### Antigravity(`agy`)에서 쓰기
 
@@ -145,7 +140,7 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 - 한도는 agy가 stdin으로 주는 `quota`로 표시합니다. 모델이 Gemini면 `gemini-5h`/`gemini-weekly`, 그 밖(Claude·GPT-OSS)이면 `3p-5h`/`3p-weekly`를 5h/7d 자리에 씁니다. 표기·색·7d가 나타나는 기준은 Claude Code와 같습니다.
 - 임박·소진 경보는 **깜빡이지 않고 배지로 고정**됩니다. 깜빡임은 경보가 올라간 시각을 `state.json`에 적어야 셀 수 있는데, agy 경로는 cache를 쓰지 않습니다.
 - 한도 없이 경로·git·모델·ctx만 보려면 `--source none`을 붙입니다.
-- `extra_commands`는 agy에서도 그대로 붙습니다. 그 명령이 받는 `{{session_id}}`는 agy의 세션 id입니다. 그래서 Claude 세션 id로 조회하는 명령은 빈 출력으로 조용히 빠집니다.
+- `extraCommands`는 agy에서도 그대로 붙습니다. 그 명령이 받는 `{{session_id}}`는 agy의 세션 id입니다. 그래서 Claude 세션 id로 조회하는 명령은 빈 출력으로 조용히 빠집니다.
 
 #### `badges`: 계정 표시
 
@@ -169,63 +164,52 @@ XDG_CACHE_HOME=~/.cache/cc-usage-work \
 
 **`CLAUDE_CONFIG_DIR`가 설정돼 있으면 `$CLAUDE_CONFIG_DIR/.claude.json` 하나만 봅니다.** 지금 실행 중인 세션이 실제로 쓰는 파일은 그 하나뿐이라 거기서 못 읽었다고 다른 곳을 보면 **다른 계정**의 이메일을 집어 옵니다. (`CLAUDE_CONFIG_DIR`를 지정하고 `claude`를 실행하면 `.claude.json`이 그 안에 생기는 것을 확인했습니다.)
 
-설정돼 있지 않으면 `<config_dir>/.claude.json` → `~/.claude.json` 순으로 봅니다.
+설정돼 있지 않으면 `<configDir>/.claude.json` → (기본 설치일 때만) `~/.claude.json` 순으로 봅니다.
 
-> **주의: cache는 따라가지 않습니다.** `CLAUDE_CONFIG_DIR`를 바꾸면 배지도 `config_dir`도 그쪽을 보지만(token은 그 디렉터리의 `.credentials.json`에서 읽습니다), `XDG_CACHE_HOME`을 그대로 두면 cache를 두 계정이 공유해 **한도·크레딧 baseline·경보 상태가 섞입니다.** 계정을 나눌 때는 [계정 나누기](#계정-나누기)를 따르세요.
->
-> 비기본 `config_dir`에서는 **keychain을 건너뜁니다.** 기본 keychain 이름(`Claude Code-credentials`)은 config dir과 무관하게 같은 값이라, 그대로 읽으면 반드시 *기본 계정*의 token을 집기 때문입니다. 그 디렉터리의 keychain 이름을 설정의 `keychain_service`에 적으면 그 이름을 씁니다. `cc-usage doctor`가 이 맥의 후보를 전부 나열합니다.
+> **예전(Go 판)과 다른 점.** cache가 계정을 따라 저절로 갈리고([계정 나누기](#계정-나누기)), 비기본 설정 폴더도 keychain을 건너뛰지 않고 Claude Code의 이름 규칙으로 찾습니다. 그래도 token을 못 읽으면 `cc-usage doctor`가 이 맥의 keychain 후보를 전부 나열합니다.
 
 렌더링할 때마다 읽지는 않습니다. **한도 값이 움직였을 때, 그리고 최소 1분에 한 번** 다시 읽습니다. 앞 조건은 빠르게 반응하고(계정이 바뀌면 한도도 바뀝니다) 뒤 조건은 지연에 상한을 둡니다. 한도 퍼센트는 정수로 반올림되므로 저사용 구간에서는 값이 달라도 같아 보여서 한도 변화만으로는 다시 읽는다는 보장이 없습니다.
 
 계정 파일을 못 읽으면 **cache를 건드리지 않고 다음 렌더링에 다시 시도합니다.** 이 기능에서 "표시 없음"은 그 자체로 *기본 계정*이라는 신호라서 일시적 실패를 "표시 없음"으로 기록하면 틀린 신호가 굳습니다. Claude Code는 이 파일을 원자적으로 재작성하므로 재작성 도중에 읽기가 걸리는 일이 실제로 있습니다. 반면 파일은 읽었는데 이메일 필드가 없으면 그 계정에 실제로 이메일이 없는 것이므로 그대로 기록합니다.
 
-`config_dir`을 기본값이 아닌 곳으로 적었는데 거기서 못 찾은 경우에도 **홈 루트의 `.claude.json`으로 넘어가지 않습니다.** 그 파일은 다른 계정의 것이라 배지와 숫자가 서로 다른 계정을 가리키게 됩니다. 틀린 배지보다 배지 없음이 낫습니다.
+`configDir`을 기본값이 아닌 곳으로 적었는데 거기서 못 찾은 경우에도 **홈 루트의 `.claude.json`으로 넘어가지 않습니다.** 그 파일은 다른 계정의 것이라 배지와 숫자가 서로 다른 계정을 가리키게 됩니다. 틀린 배지보다 배지 없음이 낫습니다.
 
 **cc-usage는 계정을 바꾸지 않습니다.** 지금 로그인된 계정을 알아보게만 합니다.
 
-#### `alert_percent`: 한도 임박 강조
+#### `alertPercent`: 한도 임박 강조
 
-한도가 `alert_percent`를 넘거나(임박) 100%에 닿으면(소진) 해당 window 세그먼트가 **빨간 배지**가 됩니다. 단계가 올라간 직후 `AlertBurst`(6초) 동안은 배지와 굵은 빨강을 오가며 깜빡인 뒤 배지로 남습니다. 계속 움직이는 표시는 결국 눈에 들어오지 않기 때문에 움직임은 그 6초뿐입니다.
+한도가 `alertPercent`를 넘거나(임박) 100%에 닿으면(소진) 해당 window 세그먼트가 **빨간 배지**가 됩니다. 단계가 올라간 직후 6초 동안은 배지와 굵은 빨강을 오가며 깜빡인 뒤 배지로 남습니다. 계속 움직이는 표시는 결국 눈에 들어오지 않기 때문에 움직임은 그 6초뿐입니다.
 
 깜빡임의 꺼진 프레임에도 배지의 양옆 여백은 남습니다. 프레임마다 폭이 바뀌면 줄 전체가 좌우로 출렁이기 때문입니다. 깜빡일 때 색만 바뀌고 자리는 그대로입니다.
 
 > 프레임은 현재 시각으로 고르므로 **프레임 카운터를 따로 저장하지 않고** 터미널의 blink(SGR 5) 지원 여부와도 무관합니다. 다만 statusline은 초당 여러 번 호출되므로 단계가 올라간 **시점**을 `state.json`에 기록하고 거기서부터 6초를 셉니다(`statusline`이 유일한 writer라는 불변 조건 그대로). window가 리셋되면 키가 달라지므로 다음에 단계가 올라갈 때 다시 깜빡입니다.
 
-#### `extra_commands`: 다른 도구의 줄 덧붙이기
+#### `extraCommands`: 다른 도구의 줄 덧붙이기
 
 cc-usage가 모르는 세그먼트(로컬 위임 표시, todo 보드 등)는 코드를 고치지 않고 설정으로 붙입니다. 각 항목의 stdout이 cc-usage 줄 **아래에 그대로** 출력됩니다.
 
 ```json
-"extra_commands": [
+"extraCommands": [
   { "command": ["my-statusline-tool", "line", "-s", "{{session_id}}"] },
   {
     "command": ["curl", "-sf", "--get",
                 "--data-urlencode", "cwd={{cwd}}",
                 "--data-urlencode", "session={{session_id}}",
-                "http://127.0.0.1:PORT/api/statusline"],
-    "timeout_ms": 300
+                "http://127.0.0.1:PORT/statusline"],
+    "timeoutMs": 300
   }
 ]
 ```
 
 - `command`는 **argv 배열**입니다 (shell을 거치지 않으므로 따옴표·공백 문제가 없습니다).
-- placeholder는 `{{session_id}}`, `{{cwd}}` 둘입니다. **값이 빈 placeholder가 하나라도 있으면 그 명령은 실행하지 않습니다.** 예를 들어 session이 없는 호출에서는 위임 줄이 뜨지 않습니다.
-- 명령이 없거나 0이 아닌 코드로 끝나거나 `timeout_ms`(기본 300ms)를 넘기면 **아무것도 출력하지 않습니다.** statusline은 어떤 경우에도 나머지 줄을 출력합니다. 위 `curl -sf`의 `-f`도 같은 목적입니다. 이 라우트가 없는 구버전 데몬의 404 JSON 본문이 statusline에 새지 않게 막습니다.
+- placeholder는 `{{session_id}}`, `{{cwd}}` 둘입니다. **쓰인 placeholder의 값이 비었으면 그 명령은 실행하지 않습니다.** 예를 들어 session이 없는 호출에서는 위임 줄이 뜨지 않습니다.
+- 명령이 없거나 0이 아닌 코드로 끝나거나 `timeoutMs`(기본 300ms)를 넘기면 **아무것도 출력하지 않습니다**(넘기면 프로세스 그룹째 끊습니다). statusline은 어떤 경우에도 나머지 줄을 출력합니다. 위 `curl -sf`의 `-f`도 같은 목적입니다. 오류 응답 본문이 statusline에 새지 않게 막습니다.
 - 항목들은 병렬로 실행되고, 출력은 설정에 적은 순서대로 붙습니다.
-- 여기서 무엇을 부를지는 전적으로 이 설정 파일에만 있습니다. cc-usage 코드에는 `my-statusline-tool`도 보드 데몬도 등장하지 않습니다.
+- 여기서 무엇을 부를지는 전적으로 이 설정 파일에만 있습니다. cc-usage 코드에는 `my-statusline-tool`이 등장하지 않습니다.
 
 statusline은 실패를 조용히 삼키므로 줄이 붙지 않으면 `cc-usage doctor`로 봅니다. doctor는 각 항목을 statusline과 같은 경로로 한 번씩 실행해 결과를 판정합니다.
 
-```
-extra_commands: 2개  cwd=/Users/me/project  session_id=(비어 있음 — --session-id 로 채운다)
-  [1] my-statusline-tool line -s {{session_id}}
-      건너뜀 — {{session_id}} 가 비어 있다
-  [2] curl -sf --get --data-urlencode cwd={{cwd}} http://127.0.0.1:PORT/api/statusline
-      = curl -sf --get --data-urlencode cwd=/Users/me/project http://127.0.0.1:PORT/api/statusline
-      비정상 종료 — exit status 7
-```
-
-placeholder가 있던 항목은 `=` 줄에 치환된 argv를 함께 보여 줍니다. 결과는 `ok`(첫 줄 표시) / `출력 없음` / `건너뜀` / `미설치` / `타임아웃` / `비정상 종료`(stderr 첫 줄) 중 하나입니다. doctor에는 Claude Code 세션이 없으므로 `{{cwd}}`는 지금 디렉터리로 채우고, `{{session_id}}`는 `--session-id`로 줄 때만 채웁니다.
+placeholder가 있던 항목은 `=` 줄에 치환된 argv를 함께 보여 줍니다. 결과는 `ok`(첫 줄 표시) / `출력 없음` / `건너뜀` / `미설치` / `타임아웃` / `비정상 종료`(stderr 첫 줄) 중 하나입니다. doctor에는 Claude Code 세션이 없으므로 `{{cwd}}`는 지금 디렉터리로 채우고, `{{session_id}}`는 `--session`으로 줄 때만 채웁니다(Go 판의 `--session-id`도 받습니다).
 
 같은 설명이 바이너리에도 있습니다(`cc-usage --help`, `cc-usage statusline --help`, `cc-usage config`). 설정하는 쪽(사람이든 에이전트든)은 repo 없이 바이너리만 만나는 경우가 많아서입니다.
 
@@ -235,7 +219,7 @@ placeholder가 있던 항목은 `=` 줄에 치환된 argv를 함께 보여 줍�
 cc-usage doctor
 ```
 
-`keychain 후보` 목록에서 맞는 항목을 골라 `keychain_service`에 넣으세요. `CLAUDE_CONFIG_DIR`를 쓸 때 keychain 항목 이름이 어떻게 정해지는지는 공식 문서로 확인하지 못했으므로, 반드시 `doctor`로 확인하는 것을 권장합니다. 처음 접근 시 keychain 허용 창이 뜰 수 있습니다.
+`token:` 줄이 ok면 할 일이 없습니다. 못 읽으면 `keychain 후보` 목록에서 맞는 항목을 골라 `keychainService`에 넣으세요. 처음 접근 시 keychain 허용 창이 뜰 수 있습니다.
 
 ### 3. 필드 검증 (처음 한 번)
 
@@ -246,7 +230,7 @@ cc-usage probe
 원본 응답을 보고 다음을 확인하세요.
 
 - `five_hour.utilization`이 0-100 범위인지 (cc-usage는 0-100으로 가정)
-- `extra_usage.used_credits` 단위 (cent라면 `credit_divisor: 100` 유지)
+- `extra_usage.used_credits` 단위 (cent라면 `creditDivisor: 100` 유지)
 
 rate limit이 낮으니 반복 실행은 피하세요.
 
@@ -280,33 +264,27 @@ cc-usage allow off   # 즉시 다시 차단
 ## 명령
 
 ```
-cc-usage statusline [--source none]
+cc-usage statusline [--source auto|stdin|api|none]
 cc-usage guard
 cc-usage allow [DURATION|off]
-cc-usage refresh
+cc-usage refresh          # statusline 이 detached 로 띄운다
 cc-usage probe
-cc-usage doctor [--session-id ID]
+cc-usage doctor [--session ID]
 cc-usage config
 cc-usage update [--check]
 cc-usage version
 ```
 
-- `cc-usage --help`: 명령 목록 + 설정 파일 경로 + `extra_commands` 사용법
+- `cc-usage --help`: 명령 목록 + 설정 파일 경로 + `extraCommands` 사용법
 - `cc-usage <명령> --help`: 명령별 도움말 (지금은 `statusline`만 따로 있고 나머지는 전체 도움말)
 - `cc-usage config`: 설정 파일 경로와 전체 필드 (이 README의 필드 표와 같은 내용)
-- `cc-usage doctor`: 설정·token·cache·keychain과 `extra_commands` 항목별 실행 결과
+- `cc-usage doctor`: 설정·계정·token·cache·keychain과 `extraCommands` 항목별 실행 결과
 
-statusline은 stdout이 pipe라 `tput`·ioctl로 터미널 폭을 알 수 없습니다. Claude Code가 `COLUMNS`·`LINES`를 넣어 주므로 그 값을 읽습니다. 표시 폭은 ANSI를 제거하고 한글·이모지를 2칸으로 세어 계산합니다. 표준 라이브러리에 wcwidth가 없어 필요한 구간만 담은 근사입니다(`internal/render/width.go`).
+statusline은 stdout이 pipe라 `tput`·ioctl로 터미널 폭을 알 수 없습니다. Claude Code가 `COLUMNS`·`LINES`를 넣어 주므로 그 값을 읽습니다. 표시 폭은 ANSI를 제거하고 한글·이모지를 2칸으로 세어 계산합니다. wcwidth 크레이트 없이 필요한 구간만 담은 근사입니다(`src/statusline/width.rs`).
 
-`NO_COLOR=1`이면 색상을 끕니다. 퍼센트 색은 **3단**입니다. `COLORTERM`이 `truecolor`/`24bit`면 24bit 그라데이션으로 끊김 없이 변합니다. `TERM`에 `256color`가 있으면 256색 큐브로 근사하고 둘 다 아니면 3단계(green/yellow/red)로 표시합니다. 지원하지 않는 터미널에서 이스케이프가 글자로 새는 것보다 계단식 색이 낫기 때문입니다. 실제로는 대개 가운데 단계(256색 큐브)를 씁니다. **`COLORTERM`은 statusline 프로세스까지 오지 않고 `TERM`만 오기 때문입니다**(실측). 경보(배지·굵은 빨강)는 임계를 넘어선 상태라 고정색입니다. cache는 `~/.cache/cc-usage/`에 0600 권한으로 둡니다.
+`NO_COLOR=1`이면 색상을 끕니다. 퍼센트 색은 **3단**입니다. `COLORTERM`이 `truecolor`/`24bit`면 24bit 그라데이션으로 끊김 없이 변합니다. `TERM`에 `256color`가 있으면 256색 큐브로 근사하고 둘 다 아니면 3단계(green/yellow/red)로 표시합니다. 지원하지 않는 터미널에서 이스케이프가 글자로 새는 것보다 계단식 색이 낫기 때문입니다. 실제로는 대개 가운데 단계(256색 큐브)를 씁니다. **`COLORTERM`은 statusline 프로세스까지 오지 않고 `TERM`만 오기 때문입니다**(실측). 경보(배지·굵은 빨강)는 임계를 넘어선 상태라 고정색입니다. cache는 `~/.cache/cc-usage/` 아래에 0600 권한으로 둡니다.
 
-## 확장 아이디어
-
-같은 cache(`usage.json`, `state.json`)를 읽는 subcommand로 붙이면 API 호출이 늘지 않습니다.
-
-- `cc-usage tui`: cmux pane용 Bubble Tea 대시보드
-- `cc-usage cmux`: `cmux set-status`로 sidebar pill 갱신
-- `--forecast`: 현재 속도로 window 소진 시각 예측
+ctx 색은 남은 한도와 다른 축입니다. 74%까지는 차오를수록 밝아지는 파랑, 75-90%는 노랑, 91% 이상은 굵은 빨강(1M 창은 97% 언저리에서 자동 압축)입니다.
 
 ## 라이선스
 

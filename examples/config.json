@@ -1,7 +1,8 @@
 {
-  "config_dir": "~/.claude",
+  "$schema": "https://raw.githubusercontent.com/minjun0219/cc-usage/main/config.schema.json",
+  "configDir": "~/.claude",
   "source": "stdin",
-  "alert_percent": 90,
+  "alertPercent": 90,
   "badges": {
     "work@example.com": {
       "emoji": "🏢"
@@ -12,7 +13,7 @@
     }
   },
   "guard": false,
-  "extra_commands": [
+  "extraCommands": [
     {
       "command": [
         "my-statusline-tool",
@@ -30,9 +31,9 @@
         "cwd={{cwd}}",
         "--data-urlencode",
         "session={{session_id}}",
-        "http://127.0.0.1:PORT/api/statusline"
+        "http://127.0.0.1:PORT/statusline"
       ],
-      "timeout_ms": 300
+      "timeoutMs": 300
     }
   ]
 }
