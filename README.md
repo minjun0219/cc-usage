@@ -1,7 +1,5 @@
 # cc-usage
 
-> **다시 살렸습니다 (2026-11-10).** 2026-10-06에 기능을 [rocky](https://github.com/minjun0219/rocky)의 `rocky statusline`으로 옮기고 아카이브했다가, rocky 없이 쓰려고 rocky의 Rust 구현을 그대로 가져와 이 레포를 Rust로 바꿨습니다. 설정 모양도 rocky `rocky.json`의 `statusline` 블록과 같습니다(camelCase).
-
 Claude Code statusline + 크레딧 guard. 설정은 한 벌이고, cache는 Claude Code 설정 폴더와 로그인된 계정(이메일)마다 저절로 갈립니다.
 
 > **개인용 도구입니다.** 릴리스 없이 소스에서 빌드해 씁니다. 새 머신에 적용하는 에이전트는 [SETUP.md](SETUP.md)부터 보세요. 설치 순서, 기존 설정과 병합하는 법, 하지 말아야 할 것이 정리돼 있습니다.
@@ -102,7 +100,7 @@ keychain 항목 이름도 Claude Code 규칙(`CLAUDE_CONFIG_DIR`이 있으면 `C
 
 ### 1. `~/.config/cc-usage/config.json`
 
-[`examples/config.json`](examples/config.json)을 참고하세요. rocky를 쓰던 머신이면 `rocky.json`의 `statusline` 블록 **안쪽**을 이 파일의 최상위로 그대로 옮기면 됩니다. JSON Schema는 [`config.schema.json`](config.schema.json)입니다. 주요 필드:
+[`examples/config.json`](examples/config.json)을 참고하세요. [rocky](https://github.com/minjun0219/rocky)를 쓰던 머신이면 `rocky.json`의 `statusline` 블록 **안쪽**을 이 파일의 최상위로 그대로 옮기면 됩니다. JSON Schema는 [`config.schema.json`](config.schema.json)입니다. 주요 필드:
 
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
@@ -166,8 +164,6 @@ keychain 항목 이름도 Claude Code 규칙(`CLAUDE_CONFIG_DIR`이 있으면 `C
 
 설정돼 있지 않으면 `<configDir>/.claude.json` → (기본 설치일 때만) `~/.claude.json` 순으로 봅니다.
 
-> **예전(Go 판)과 다른 점.** cache가 계정을 따라 저절로 갈리고([계정 나누기](#계정-나누기)), 비기본 설정 폴더도 keychain을 건너뛰지 않고 Claude Code의 이름 규칙으로 찾습니다. 그래도 token을 못 읽으면 `cc-usage doctor`가 이 맥의 keychain 후보를 전부 나열합니다.
-
 렌더링할 때마다 읽지는 않습니다. **한도 값이 움직였을 때, 그리고 최소 1분에 한 번** 다시 읽습니다. 앞 조건은 빠르게 반응하고(계정이 바뀌면 한도도 바뀝니다) 뒤 조건은 지연에 상한을 둡니다. 한도 퍼센트는 정수로 반올림되므로 저사용 구간에서는 값이 달라도 같아 보여서 한도 변화만으로는 다시 읽는다는 보장이 없습니다.
 
 계정 파일을 못 읽으면 **cache를 건드리지 않고 다음 렌더링에 다시 시도합니다.** 이 기능에서 "표시 없음"은 그 자체로 *기본 계정*이라는 신호라서 일시적 실패를 "표시 없음"으로 기록하면 틀린 신호가 굳습니다. Claude Code는 이 파일을 원자적으로 재작성하므로 재작성 도중에 읽기가 걸리는 일이 실제로 있습니다. 반면 파일은 읽었는데 이메일 필드가 없으면 그 계정에 실제로 이메일이 없는 것이므로 그대로 기록합니다.
@@ -209,7 +205,7 @@ cc-usage가 모르는 세그먼트(로컬 위임 표시, todo 보드 등)는 코
 
 statusline은 실패를 조용히 삼키므로 줄이 붙지 않으면 `cc-usage doctor`로 봅니다. doctor는 각 항목을 statusline과 같은 경로로 한 번씩 실행해 결과를 판정합니다.
 
-placeholder가 있던 항목은 `=` 줄에 치환된 argv를 함께 보여 줍니다. 결과는 `ok`(첫 줄 표시) / `출력 없음` / `건너뜀` / `미설치` / `타임아웃` / `비정상 종료`(stderr 첫 줄) 중 하나입니다. doctor에는 Claude Code 세션이 없으므로 `{{cwd}}`는 지금 디렉터리로 채우고, `{{session_id}}`는 `--session`으로 줄 때만 채웁니다(Go 판의 `--session-id`도 받습니다).
+placeholder가 있던 항목은 `=` 줄에 치환된 argv를 함께 보여 줍니다. 결과는 `ok`(첫 줄 표시) / `출력 없음` / `건너뜀` / `미설치` / `타임아웃` / `비정상 종료`(stderr 첫 줄) 중 하나입니다. doctor에는 Claude Code 세션이 없으므로 `{{cwd}}`는 지금 디렉터리로 채우고, `{{session_id}}`는 `--session`으로 줄 때만 채웁니다(`--session-id`로 줘도 됩니다).
 
 같은 설명이 바이너리에도 있습니다(`cc-usage --help`, `cc-usage statusline --help`, `cc-usage config`). 설정하는 쪽(사람이든 에이전트든)은 repo 없이 바이너리만 만나는 경우가 많아서입니다.
 
