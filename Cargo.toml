@@ -1,0 +1,40 @@
+[package]
+name = "cc-usage"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "Claude Code statusline + 크레딧 guard"
+publish = false
+
+[lib]
+name = "cc_usage"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cc-usage"
+path = "src/main.rs"
+
+# 의존성은 rocky 의 statusline 이 쓰던 것만 — 새로 늘리지 않는다(AGENTS.md "의존성 최소화").
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# `preserve_order`: probe 가 응답 키 순서를 그대로 낸다.
+serde_json = { version = "1", features = ["preserve_order"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+# usage API 한 번 부르기(refresh·probe).
+ureq = { version = "3", features = ["json"] }
+# setsid(2)·flock(2)·signal(2).
+libc = "0.2"
+# 캐시 폴더 이름과 keychain 항목 이름의 sha256 — ureq 의 rustls 가 이미 끌어온다.
+ring = "0.17"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

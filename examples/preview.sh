@@ -8,7 +8,7 @@
 # 조회가 불가능한 keychain/credentials를 가리켜 refresh가 network에 닿지
 # 못하게 한다.
 set -e
-BIN=${1:-./bin/cc-usage}
+BIN=${1:-./target/release/cc-usage}
 DIR=$(mktemp -d)
 trap 'rm -rf "$DIR"' EXIT
 export XDG_CACHE_HOME="$DIR/cache" CC_USAGE_CONFIG="$DIR/config.json"
@@ -22,24 +22,27 @@ JSON
 export HOME="$DIR/home"
 
 cat > "$DIR/config.json" <<JSON
-{"source":"stdin", "alert_percent":90,
- "keychain_service":"cc-usage-preview-absent",
- "credentials_file":"$DIR/absent.json",
+{"source":"stdin", "alertPercent":90,
+ "keychainService":"cc-usage-preview-absent",
+ "credentialsFile":"$DIR/absent.json",
  "badges":{"preview@example.com":{"emoji":"🏢"}}}
 JSON
 
 # 배지 없는 설정 — 같은 상태를 배지 유무로 비교하려고 따로 둔다.
 # 위 설정에서 badges 만 뺀 것을 그대로 적는다. 파생시키지 않는 이유는 의존성이다
-# — Go 와 make 만 있는 머신에서 make preview 가 돌아야 한다.
+# — cargo 와 make 만 있는 머신에서 make preview 가 돌아야 한다.
 cat > "$DIR/config-nobadge.json" <<JSON
-{"source":"stdin", "alert_percent":90,
- "keychain_service":"cc-usage-preview-absent",
- "credentials_file":"$DIR/absent.json"}
+{"source":"stdin", "alertPercent":90,
+ "keychainService":"cc-usage-preview-absent",
+ "credentialsFile":"$DIR/absent.json"}
 JSON
 
+# 캐시는 설정 폴더·계정(이메일)마다 갈린다 — 자리는 doctor 가 실제 동작과 같은 함수로 알려 준다.
+cache_dir() { "$BIN" doctor 2>/dev/null | sed -n 's/^cache dir: *//p'; }
 NOW=$(date +%s)
-mkdir -p "$XDG_CACHE_HOME/cc-usage"
-cat > "$XDG_CACHE_HOME/cc-usage/usage.json" <<JSON
+CACHE=$(cache_dir)
+mkdir -p "$CACHE"
+cat > "$CACHE/usage.json" <<JSON
 {"usage":{"fetched_at":"$(date -u -r "$NOW" +%Y-%m-%dT%H:%M:%SZ)",
   "extra":{"enabled":true,"used_credits":1160,"monthly_limit":5000}},
  "baseline":{"window_key":"5h","credits":1080,"at":"$(date -u -r "$NOW" +%Y-%m-%dT%H:%M:%SZ)"}}
@@ -87,7 +90,7 @@ show "배지 + 경보 (배지와 빨간 배지가 한 줄에)" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"$CWD\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":93,\"resets_at\":$R5}}}"
 
 # 직전 케이스가 남긴 한도 cache 를 지워야 진짜로 "아무것도 없는" 렌더가 된다.
-rm -f "$XDG_CACHE_HOME/cc-usage/state.json" "$XDG_CACHE_HOME/cc-usage/usage.json"
+rm -f "$CACHE/state.json" "$CACHE/usage.json"
 show "배지만 (stdin 도 cache 도 빈 렌더)" \
  "{\"session_id\":\"s\"}"
 
@@ -96,12 +99,13 @@ show "배지만 (stdin 도 cache 도 빈 렌더)" \
 API_DIR=$(mktemp -d)
 export XDG_CACHE_HOME="$API_DIR/cache" CC_USAGE_CONFIG="$API_DIR/config.json"
 cat > "$API_DIR/config.json" <<JSON
-{"source":"api", "alert_percent":90,
- "keychain_service":"cc-usage-preview-absent",
- "credentials_file":"$API_DIR/absent.json"}
+{"source":"api", "alertPercent":90,
+ "keychainService":"cc-usage-preview-absent",
+ "credentialsFile":"$API_DIR/absent.json"}
 JSON
-mkdir -p "$XDG_CACHE_HOME/cc-usage"
-cat > "$XDG_CACHE_HOME/cc-usage/usage.json" <<JSON
+CACHE=$(cache_dir)
+mkdir -p "$CACHE"
+cat > "$CACHE/usage.json" <<JSON
 {"usage":{"fetched_at":"$(date -u -r "$NOW" +%Y-%m-%dT%H:%M:%SZ)",
   "five_hour":{"percent":35,"resets_at":"$(date -u -r "$R5" +%Y-%m-%dT%H:%M:%SZ)"},
   "seven_day":{"percent":60,"resets_at":"$(date -u -r "$R7" +%Y-%m-%dT%H:%M:%SZ)"},
