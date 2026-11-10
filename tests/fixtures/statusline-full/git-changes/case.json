@@ -1,5 +1,5 @@
 {
-  "why": "staged · unstaged · 둘 다 — untracked 는 세지 않는다",
+  "why": "staged · unstaged 가 같이 있으면 *+ — untracked 는 세지 않는다",
   "now": "2026-09-16T16:40:00+09:00",
   "tz": "Asia/Seoul",
   "env": {},
