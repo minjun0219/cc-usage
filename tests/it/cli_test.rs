@@ -94,3 +94,37 @@ fn allow_takes_at_most_one_argument() {
     assert_eq!(code, 1);
     assert!(err.contains("하나만"), "{err}");
 }
+
+/// 설정 경로: `CC_USAGE_CONFIG` > `XDG_CONFIG_HOME/cc-usage/config.json` > `~/.config/cc-usage/config.json`.
+#[test]
+fn config_path_prefers_env_then_xdg_then_home() {
+    let dir = tempfile::tempdir().unwrap();
+    let shown = |env: &[(&str, &str)]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_cc-usage"))
+            .env_clear()
+            .env("HOME", dir.path())
+            .envs(env.iter().copied())
+            .arg("config")
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .nth(1)
+            .unwrap_or_default()
+            .trim()
+            .split("  ")
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    };
+    let home = dir.path().display().to_string();
+    assert_eq!(shown(&[]), format!("{home}/.config/cc-usage/config.json"));
+    assert_eq!(
+        shown(&[("XDG_CONFIG_HOME", "/x")]),
+        "/x/cc-usage/config.json"
+    );
+    assert_eq!(
+        shown(&[("XDG_CONFIG_HOME", "/x"), ("CC_USAGE_CONFIG", "/y/c.json")]),
+        "/y/c.json"
+    );
+}
