@@ -544,6 +544,17 @@ fn git_status_parses_porcelain_v2() {
             GitStatus { branch: "(detached)".into(), detached: true, oid: "1a2b3c4d5e6f".into(), ..Default::default() },
         ),
         ("# branch.oid (initial)\n# branch.head main\n", GitStatus { branch: "main".into(), ..Default::default() }),
+        (
+            // 원격 브랜치가 지워지면 upstream 은 남고 branch.ab 만 빠진다(2026-11-10 git 실측).
+            "# branch.oid 1a2b3c4d5e6f\n# branch.head feat\n# branch.upstream origin/feat\n",
+            GitStatus {
+                branch: "feat".into(),
+                oid: "1a2b3c4d5e6f".into(),
+                has_upstream: true,
+                upstream_gone: true,
+                ..Default::default()
+            },
+        ),
     ];
     for (out, want) in cases {
         assert_eq!(GitStatus::parse(out), want, "{out:?}");

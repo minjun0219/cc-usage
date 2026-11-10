@@ -517,7 +517,8 @@ pub fn dir_link_url(template: &str, dir: &str) -> Option<String> {
     url.bytes().all(|b| b.is_ascii_graphic()).then_some(url)
 }
 
-/// `⎇ main*+! ⇡1⇣2` — 이름 바로 뒤에 unstaged `*` · staged `+` · 충돌 `!`, 띄우고 ahead/behind. 숫자는 커밋 수에만 쓴다 —
+/// `⎇ main*+! ⇡1⇣2` — 이름 바로 뒤에 unstaged `*` · staged `+` · 충돌 `!`, 띄우고 ahead/behind(원격 브랜치가 지워졌으면
+/// `gone`). 숫자는 커밋 수에만 쓴다 —
 /// 파일 상태는 있고 없음만 보인다(파일 수와 커밋 수가 한 줄에 섞이면 단위가 엇갈린다). detached 면 `@<7자리>`.
 /// 표시는 노랑·빨강으로 초록 이름과 가른다. `*` 는 git 이 브랜치 이름에 못 쓰게 하지만 `+`·`!` 는 쓸 수 있어 색으로만
 /// 갈린다 — `NO_COLOR` 면 깨끗한 `feat+` 와 staged 가 있는 `feat` 가 같게 보인다. 그런 이름은 드물어서 짧은 쪽을 골랐다.
@@ -547,7 +548,10 @@ fn branch_text(st: Option<&GitStatus>, s: &Style) -> String {
         t += &s.c(RED, "!");
     }
     // 업스트림이 없으면 ahead/behind 를 내지 않는다 — 없는 것을 0 으로 보이면 최신으로 읽힌다.
-    if st.has_upstream {
+    // 업스트림이 지워졌으면 비교할 대상이 없다 — 아무것도 내지 않으면 최신과 같게 보이므로 `gone` 을 단다.
+    if st.upstream_gone {
+        t += &format!(" {}", s.c(YELLOW, "gone"));
+    } else if st.has_upstream {
         let mut sync = String::new();
         if st.ahead > 0 {
             sync += &format!("⇡{}", st.ahead);
