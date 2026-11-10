@@ -76,7 +76,7 @@ show "git repo 밖" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"/tmp\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
 
 # git 변경 표시 — 지금 checkout 에 기대면 깨끗한 트리에서는 볼 수가 없다. 임시 repo 에
-# unstaged(*) · 충돌(!) · staged(+N) · ahead/behind 를 한꺼번에 만든다. 사용자 git 설정은 읽지 않는다.
+# unstaged(*) · staged(+) · 충돌(!) · ahead/behind 를 한꺼번에 만든다. 사용자 git 설정은 읽지 않는다.
 GIT_PREVIEW="$DIR/git"
 (
 	export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
@@ -96,7 +96,7 @@ GIT_PREVIEW="$DIR/git"
 	printf a2 > a
 ) >/dev/null 2>&1
 
-show "git 변경 — unstaged * · 충돌 ! · staged +2 · ahead/behind" \
+show "git 변경 — unstaged * · staged + · 충돌 ! · ahead/behind" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"$GIT_PREVIEW/work\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
 
 show "빈 payload — 직전 stdin 값을 cache에서 그대로 쓴다" ""
