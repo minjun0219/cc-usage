@@ -2,6 +2,7 @@
 
 mod claude_account_test;
 mod cli_test;
+mod config_test;
 mod limits_test;
 mod statusline_cmd_test;
 mod statusline_doctor_test;
