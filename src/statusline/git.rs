@@ -10,6 +10,9 @@ pub struct GitStatus {
     /// detached 일 때 보여줄 커밋 — 첫 커밋 전이면 빈 값.
     pub oid: String,
     pub has_upstream: bool,
+    /// 업스트림은 설정됐는데 그 원격 브랜치가 없다(`branch.ab` 가 오지 않는다) — `git status -sb` 의 `[gone]`.
+    /// 머지 뒤 원격 브랜치를 지우면 이렇게 된다.
+    pub upstream_gone: bool,
     pub ahead: u32,
     pub behind: u32,
     pub staged: u32,
@@ -20,6 +23,7 @@ pub struct GitStatus {
 impl GitStatus {
     pub fn parse(out: &str) -> GitStatus {
         let mut s = GitStatus::default();
+        let mut saw_ab = false;
         for line in out.split('\n').filter(|l| !l.is_empty()) {
             let Some(header) = line.strip_prefix("# ") else {
                 s.count(line);
@@ -34,6 +38,7 @@ impl GitStatus {
                 }
                 "branch.upstream" => s.has_upstream = !val.is_empty(),
                 "branch.ab" => {
+                    saw_ab = true;
                     if let Some((a, b)) = val.split_once(' ') {
                         s.ahead = unsigned(a);
                         s.behind = unsigned(b);
@@ -42,6 +47,7 @@ impl GitStatus {
                 _ => {}
             }
         }
+        s.upstream_gone = s.has_upstream && !saw_ab;
         s
     }
 

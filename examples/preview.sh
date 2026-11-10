@@ -94,10 +94,17 @@ GIT_PREVIEW="$DIR/git"
 	git fetch -q
 	git merge -q origin/main || true
 	printf a2 > a
+	# 원격 브랜치가 지워진 브랜치 — 머지 뒤 원격에서 지우면 이렇게 된다.
+	cd "$GIT_PREVIEW" && git clone -q remote.git gone && cd gone
+	git checkout -q -b feat && git push -q -u origin feat
+	git push -q origin --delete feat && git fetch -q --prune
 ) >/dev/null 2>&1
 
 show "git 변경 — unstaged * · staged + · 충돌 ! · ahead/behind" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"$GIT_PREVIEW/work\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
+
+show "git 원격 브랜치 지워짐 — gone" \
+ "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"workspace\":{\"current_dir\":\"$GIT_PREVIEW/gone\"},\"rate_limits\":{\"five_hour\":{\"used_percentage\":30,\"resets_at\":$R5}}}"
 
 show "빈 payload — 직전 stdin 값을 cache에서 그대로 쓴다" ""
 
