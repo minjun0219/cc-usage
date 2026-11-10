@@ -7,14 +7,14 @@ Claude Code statusline + 크레딧 guard. 설정은 한 벌이고, cache는 Clau
 > **개인용 도구입니다.** 릴리스 없이 소스에서 빌드해 씁니다. 새 머신에 적용하는 에이전트는 [SETUP.md](SETUP.md)부터 보세요. 설치 순서, 기존 설정과 병합하는 법, 하지 말아야 할 것이 정리돼 있습니다.
 
 ```
-~/dev/workspaces/cc-usage · ⎇ main*+ ⇡1
+~/dev/workspaces/cc-usage · ⎇ main* +3 ⇡1
 Sonnet high · ctx 40% · 5h 70% (↻18:00) · $38.40 ($50.00)
 ```
 
 7d는 여유로우면 나오지 않고, 한도가 소진되면 크레딧이 아래 줄로 따로 내려갑니다.
 
 ```
-~/dev/workspaces/cc-usage · ⎇ main*+ ⇡1
+~/dev/workspaces/cc-usage · ⎇ main* +3 ⇡1
 Sonnet high · ctx 40% · 7d 25% (2d 4h) · 5h 0% (↻18:00)
 $38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
 ```
@@ -51,7 +51,7 @@ $38.40 ($50.00) · 이번 window +$0.80 · 크레딧 소진 중
   임박 경고를 꺼도(`alertPercent: 0`) polling은 여전히 촘촘해져야 하므로 경계를 `alertPercent`와 따로 둡니다. 70%는 색이 노래지기 시작하는 지점과 같아서 화면 표시와 동작의 기준이 일치합니다.
 - 한도 100%가 처음 관측된 시점의 `used_credits`를 baseline으로 저장해서 "이번 window에서 쓴 크레딧"을 계산합니다. 첫 조회 전 소진분은 포함되지 않습니다.
 - `5h`/`7d` 숫자는 **남은 비율**입니다(100 − 사용률). 쓴 양보다 남은 양이 "지금 뭘 할 수 있나"에 바로 답하기 때문입니다. 색은 사용률로 고르므로 숫자가 작아질수록 빨개집니다. 괄호는 **언제 풀리는지** 보여 줍니다. `↻18:00`은 8칸 고정이라 남은 시간이 줄어도 뒤가 밀리지 않고 `↻`가 "여기서 다시 시작한다"를 바로 전합니다. 하루를 넘기면 시각만으로는 어느 날인지 모르므로 남은 시간(`2d 4h`)을 표시합니다.
-- 경로 줄은 stdin의 `workspace.current_dir`에서 나옵니다. 브랜치명, 변경 표시(이름 바로 뒤에 `*` unstaged / `+` staged / `!` 충돌 — 개수 없이 있는지만), ahead(`⇡`)/behind(`⇣`) 개수는 `git status --porcelain=v2 --branch --untracked-files=no` **한 번**으로 읽습니다. porcelain=v2가 파일당 한 줄을 출력하고 `XY` 필드가 staged/unstaged를 구분해 주므로 추가 git 호출이 없습니다. untracked는 스캔 비용 때문에 세지 않습니다(`--untracked-files=no`). git repo가 아니거나 500ms를 넘기면 세그먼트만 빠집니다.
+- 경로 줄은 stdin의 `workspace.current_dir`에서 나옵니다. 브랜치명, 변경 표시(이름 바로 뒤에 `*` unstaged / `!` 충돌 — 있는지만), 띄워서 staged 개수(`+3`)와 ahead(`⇡`)/behind(`⇣`) 개수는 `git status --porcelain=v2 --branch --untracked-files=no` **한 번**으로 읽습니다. porcelain=v2가 파일당 한 줄을 출력하고 `XY` 필드가 staged/unstaged를 구분해 주므로 추가 git 호출이 없습니다. untracked는 스캔 비용 때문에 세지 않습니다(`--untracked-files=no`). git repo가 아니거나 500ms를 넘기면 세그먼트만 빠집니다.
 - token은 **읽기 전용**입니다 (`tokenEnv` → macOS keychain → `<configDir>/.credentials.json`). keychain token이 만료됐고 파일 token이 유효하면 파일 쪽을 씁니다. 만료 시 갱신하지 않고, Claude Code가 다음 요청에서 갱신합니다.
 
 ## 설치
