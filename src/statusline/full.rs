@@ -517,7 +517,8 @@ pub fn dir_link_url(template: &str, dir: &str) -> Option<String> {
     url.bytes().all(|b| b.is_ascii_graphic()).then_some(url)
 }
 
-/// `⎇ main =1 +3 !5 ⇡1⇣2` — 충돌·staged·unstaged·ahead/behind. detached 면 `@<7자리>`.
+/// `⎇ main*+! ⇡1⇣2` — 이름 바로 뒤에 unstaged `*` · staged `+` · 충돌 `!` 표시(개수 없이 있고 없음만), 띄우고 ahead/behind
+/// 개수. detached 면 `@<7자리>`. 표시는 노랑·빨강으로 이름(초록)과 갈라 둔다 — 같은 색이면 `main+` 가 브랜치 이름으로 읽힌다.
 fn branch_text(st: Option<&GitStatus>, s: &Style) -> String {
     let Some(st) = st.filter(|st| !st.branch.is_empty()) else {
         return String::new();
@@ -530,14 +531,16 @@ fn branch_text(st: Option<&GitStatus>, s: &Style) -> String {
         st.branch.clone()
     };
     let mut t = format!("{} {}", s.c(BLUE, "⎇"), s.c(GREEN, &name));
-    for (n, glyph, color) in [
-        (st.conflicted, "=", RED),
-        (st.staged, "+", GREEN),
-        (st.unstaged, "!", YELLOW),
-    ] {
-        if n > 0 {
-            t += &format!(" {}", s.c(color, &format!("{glyph}{n}")));
-        }
+    let dirty: String = [(st.unstaged, '*'), (st.staged, '+')]
+        .into_iter()
+        .filter(|&(n, _)| n > 0)
+        .map(|(_, glyph)| glyph)
+        .collect();
+    if !dirty.is_empty() {
+        t += &s.c(YELLOW, &dirty);
+    }
+    if st.conflicted > 0 {
+        t += &s.c(RED, "!");
     }
     // 업스트림이 없으면 ahead/behind 를 내지 않는다 — 없는 것을 0 으로 보이면 최신으로 읽힌다.
     if st.has_upstream {
