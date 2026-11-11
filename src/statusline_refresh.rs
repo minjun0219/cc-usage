@@ -22,8 +22,6 @@ use crate::statusline_cache::{read, state_file, usage_file, write, Slot};
 /// usage API — 비공식이라 응답 구조가 바뀔 수 있고 rate limit 이 낮다.
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const BETA_HEADER: &str = "oauth-2025-04-20";
-/// 테스트 전용 — 가짜 서버 주소. 사용자 표면이 아니다(cc-usage 의 `CC_USAGE_API_URL` 자리).
-const USAGE_URL_ENV: &str = "CC_USAGE_API_URL";
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 const KEYCHAIN_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -85,8 +83,9 @@ pub fn spawn_detached(source: Source) -> bool {
         return false;
     };
     let mut cmd = std::process::Command::new(exe);
-    cmd.arg("refresh")
-        .env(crate::limits::SOURCE_ENV, source.as_str())
+    let profile = crate::profile::get();
+    cmd.args(profile.refresh_args)
+        .env(profile.source_env, source.as_str())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -247,8 +246,10 @@ fn fetch(token: &str, now: DateTime<Utc>) -> Result<crate::limits::CachedUsage, 
         .map_err(|e| Failure::from(format!("{e} (GET {} → http 200)", usage_url())))
 }
 
+/// 테스트 전용 환경 변수(`profile::get().usage_url_env`, cc-usage 는 `CC_USAGE_API_URL`)가 가짜 서버 주소로 바꾼다 —
+/// 사용자 표면이 아니다.
 fn usage_url() -> String {
-    std::env::var(USAGE_URL_ENV).unwrap_or_else(|_| USAGE_URL.to_string())
+    std::env::var(crate::profile::get().usage_url_env).unwrap_or_else(|_| USAGE_URL.to_string())
 }
 
 /// usage API 를 한 번 부르고 200 이면 본문을 그대로 — `probe` 가 원본을 보이는 데도 쓴다.
@@ -265,7 +266,7 @@ pub(crate) fn fetch_raw(token: &str, now: DateTime<Utc>) -> Result<Vec<u8>, Fail
         .header("Authorization", &format!("Bearer {token}"))
         .header("anthropic-beta", BETA_HEADER)
         .header("Accept", "application/json")
-        .header("User-Agent", "cc-usage")
+        .header("User-Agent", crate::profile::get().name)
         .call()
         .map_err(|e| Failure::from(format!("Get {url:?}: {e}")))?;
     let status = response.status().as_u16();

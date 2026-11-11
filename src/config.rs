@@ -54,16 +54,22 @@ pub struct StatuslineConfig {
 /// 파일 없음 / 파싱 실패 / 블록 없음 / 모르는 값은 기본값(fail-open). `extraCommands` 에서 모양이 틀린 항목(`command` 가
 /// 문자열 배열이 아님)은 건너뛴다 — statusline 이 설정 한 줄 때문에 비면 안 된다.
 pub fn load(config_path: &Path) -> StatuslineConfig {
-    let mut cfg = StatuslineConfig::default();
     let Ok(raw) = std::fs::read_to_string(config_path) else {
-        return cfg;
+        return StatuslineConfig::default();
     };
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return cfg;
+        return StatuslineConfig::default();
     };
     let Some(block) = parsed.as_object() else {
-        return cfg;
+        return StatuslineConfig::default();
     };
+    from_block(block)
+}
+
+/// 이미 읽은 설정 객체에서 — 모양은 `config.json` 최상위(= rocky `rocky.json` 의 `statusline` 블록)와 같다. 모르는 값·
+/// 모양이 틀린 항목은 [`load`] 와 같게 기본값으로 둔다. 다른 설정 파일 안에 이 블록을 두는 실행 파일이 쓴다.
+pub fn from_block(block: &serde_json::Map<String, serde_json::Value>) -> StatuslineConfig {
+    let mut cfg = StatuslineConfig::default();
     if let Some(source) = block
         .get("source")
         .and_then(|v| v.as_str())

@@ -136,3 +136,20 @@ fn config_reads_dir_link() {
         assert_eq!(load(&path).dir_link, None, "{raw}");
     }
 }
+
+/// 다른 설정 파일 안에 이 블록을 두는 실행 파일(rocky 의 `rocky.json` → `statusline`)은 `from_block` 으로 읽는다 — 파일
+/// 최상위를 읽는 `load` 와 결과가 같아야 한다.
+#[test]
+fn from_block_reads_the_same_shape_as_the_file() {
+    let raw = r#"{ "source": "stdin", "alertPercent": 70, "dirLink": "vscode://file{{cwd}}",
+        "extraCommands": [{ "command": ["echo", "hi"], "timeoutMs": 300 }, { "command": "bad" }],
+        "badges": { "me@example.com": { "emoji": "🏢" } }, "guard": true }"#;
+    let (_dir, path) = write_config(raw);
+    let outer: serde_json::Value =
+        serde_json::from_str(&format!(r#"{{ "statusline": {raw} }}"#)).unwrap();
+    let block = outer["statusline"].as_object().unwrap();
+    let cfg = from_block(block);
+    assert_eq!(cfg, load(&path));
+    assert_eq!(cfg.extra_commands.len(), 1, "모양이 틀린 항목은 건너뛴다");
+    assert!(cfg.limits.guard);
+}

@@ -13,6 +13,13 @@ path = "src/lib.rs"
 [[bin]]
 name = "cc-usage"
 path = "src/main.rs"
+required-features = ["cli"]
+
+# `cli` — 실행 파일 쪽(`help` · `update` · `VERSION`). 이 크레이트를 라이브러리로 싣는 쪽(rocky)은
+# `default-features = false` 로 판정·렌더·캐시만 가져가고 이름은 `profile::set` 으로 건다.
+[features]
+default = ["cli"]
+cli = []
 
 # 의존성은 rocky 의 statusline 이 쓰던 것만 — 새로 늘리지 않는다(AGENTS.md "의존성 최소화").
 [dependencies]
@@ -38,3 +45,4 @@ codegen-units = 1
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
+required-features = ["cli"]

@@ -12,8 +12,10 @@ use std::time::{Duration, Instant};
 
 /// 이 실행기가 띄운 자식에 거는 표식 — `cc-usage statusline` 은 이것을 보면 아무것도 그리지 않는다. `extraCommands` 에
 /// `cc-usage statusline` 이 들어 있으면 자기를 다시 띄우고, 그 자식이 또 띄우는 것을 끝없이 되풀이한다(단계마다 새 프로세스
-/// 그룹이라 마감 kill 로 끊기지 않는다).
-pub const NESTED_ENV: &str = "CC_USAGE_NESTED";
+/// 그룹이라 마감 kill 로 끊기지 않는다). 이름은 `profile::get().nested_env`(cc-usage 는 `CC_USAGE_NESTED`).
+pub fn nested_env() -> &'static str {
+    crate::profile::get().nested_env
+}
 
 /// 본 프로세스가 끝난 뒤 파이프(stdout·stderr)가 닫히기를 기다리는 시간 — 백그라운드로 띄운 자식이 어느 쪽이든 붙잡고
 /// 있으면 그 출력은 버린다.
@@ -70,7 +72,7 @@ pub fn run_detailed(argv: &[String], timeout: Duration) -> (Outcome, Duration) {
         let _guard = spawn_lock();
         Command::new(program)
             .args(args)
-            .env(NESTED_ENV, "1")
+            .env(nested_env(), "1")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

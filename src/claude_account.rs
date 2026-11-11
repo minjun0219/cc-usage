@@ -105,15 +105,21 @@ pub fn cache_root(xdg_cache_home: Option<&str>, home: &Path) -> PathBuf {
 
 /// 이 설정 폴더의 캐시 자리 — 계정 캐시(`account.json`)가 여기 있다.
 pub fn cache_slot(cache_root: &Path, config_dir: &Path) -> PathBuf {
-    cache_root
-        .join("cc-usage")
-        .join(short_hash(&clean(config_dir).to_string_lossy()))
+    app_cache(cache_root).join(short_hash(&clean(config_dir).to_string_lossy()))
 }
 
 /// guard 를 잠시 끄는 `allow.json` — 계정과 상관없이 하나다. 막힌 세션과 다른 환경(다른 `CLAUDE_CONFIG_DIR`)의 터미널에서
 /// 불러도 풀려야 한다.
 pub fn allow_file(cache_root: &Path) -> PathBuf {
-    cache_root.join("cc-usage").join("allow.json")
+    app_cache(cache_root).join("allow.json")
+}
+
+/// 캐시 루트 아래 이 실행 파일의 폴더 — `profile::get().cache_dir`(cc-usage 는 `cc-usage`).
+fn app_cache(cache_root: &Path) -> PathBuf {
+    crate::profile::get()
+        .cache_dir
+        .iter()
+        .fold(cache_root.to_path_buf(), |p, seg| p.join(seg))
 }
 
 /// 한 계정의 캐시 — `state.json` · `usage.json` · `refresh.lock`. 이메일을 모르면(빈 값 포함) `_`.

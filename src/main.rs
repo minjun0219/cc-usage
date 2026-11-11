@@ -30,7 +30,7 @@ fn run(cmd: &str, args: &[String]) -> Result<(), String> {
         "statusline" => {
             // statusLine 명령줄이 틀려도 statusline 은 비지 않는다 — 무엇이 틀렸는지 한 줄을 낸다.
             match Flags::parse(args, &["source"], &[]) {
-                Ok(flags) => commands::cmd_statusline(flags.value("source")),
+                Ok(flags) => commands::cmd_statusline(flags.value("source"), config::load_user()),
                 Err(e) => println!("[cc-usage] {e}"),
             }
             Ok(())
@@ -39,7 +39,7 @@ fn run(cmd: &str, args: &[String]) -> Result<(), String> {
         "refresh" => {
             let mut cfg = config::load_user();
             // 부모 statusline 이 정한 source 를 환경 변수로 받는다(`statusline_refresh::spawn_detached`).
-            let env = std::env::var(cc_usage::limits::SOURCE_ENV).ok();
+            let env = std::env::var(cc_usage::profile::get().source_env).ok();
             cfg.limits.source =
                 cc_usage::limits::override_source(cfg.limits.source, env.as_deref(), None)
                     .unwrap_or(cfg.limits.source);
