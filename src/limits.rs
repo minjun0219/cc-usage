@@ -51,13 +51,12 @@ impl Source {
     }
 }
 
-/// statusline 이 이번 실행에서만 쓸 `source` — 설정값을 환경 변수가, 그것을 `--source` 플래그가 이긴다. 갱신 자식에게도
-/// 같은 환경 변수로 넘긴다(`cc-usage refresh`).
+/// statusline 이 이번 실행에서만 쓸 `source` — 설정값을 환경 변수(`profile::get().source_env`, cc-usage 는
+/// `CC_USAGE_SOURCE`)가, 그것을 `--source` 플래그가 이긴다. 갱신 자식에게도 같은 환경 변수로 넘긴다(`cc-usage refresh`).
 ///
 /// **guard 는 이것을 보지 않는다** — 환경 변수는 프로세스 트리로 물려 내려가서, 다른 호스트 때문에 셸에 export 해 둔
 /// `none` 이 같은 셸에서 띄운 Claude Code 의 guard 를 아무 표시 없이 끈다. guard 는 설정 파일만 본다.
-pub const SOURCE_ENV: &str = "CC_USAGE_SOURCE";
-
+///
 /// 설정값 → 환경 변수 → 플래그 순으로 덮는다. 모르는 환경 변수 값은 무시하고(오타 하나로 설정값까지 잃지 않게), 모르는
 /// 플래그 값은 에러다 — 명령줄은 고친 사람이 바로 결과를 본다. 빈 값은 덮지 않는다.
 pub fn override_source(

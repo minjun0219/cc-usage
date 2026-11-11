@@ -14,6 +14,7 @@ Claude Code statusline + 크레딧 guard. Rust 단일 크레이트(lib `cc_usage
 ```
 src/main.rs               명령 입구 (statusline, guard, allow, refresh, probe, doctor, config, update, version) · 플래그 파서
 src/help.rs               도움말 · `cc-usage config` 의 필드 표
+src/profile.rs            이름 묶음(환경 변수 · 캐시 폴더 · 메시지 머리 · 갱신 인자) — 기본 cc-usage, 라이브러리로 싣는 쪽이 `profile::set`
 src/config.rs             설정 파일(`config.json`, camelCase — rocky `rocky.json` 의 `statusline` 블록과 같은 모양)
 src/limits.rs             순수 판정: stdin 파싱, 모드 선택, refresh 필요 여부, 크레딧 baseline, 경보 (+ limits/agy.rs, limits/guard.rs)
 src/claude_account.rs     순수 판정: 세션이 어느 계정인가, cache 자리, keychain 이름, token 파싱
@@ -30,6 +31,14 @@ tests/fixtures/statusline-full/   골든 픽스처 — 출력을 ANSI 까지 고
 config.schema.json        설정 JSON Schema — src/config.rs 와 함께 움직인다
 examples/                 config, settings.json 예시, preview.sh
 ```
+
+## 라이브러리로 쓰기 (rocky)
+
+rocky 가 이 크레이트를 Cargo git dependency 로 싣는다(`default-features = false` — `cli` feature 의 `help` · `update` ·
+`VERSION` 은 빠진다). 그래서 **이름을 코드에 박지 않는다**: 환경 변수 · 캐시 폴더 · `[cc-usage]` 머리 · User-Agent ·
+갱신 명령줄 · guard 안내는 `profile::get()` 에서 읽는다. 설정은 부르는 쪽이 읽어 넘긴다(`cmd_statusline(source, cfg)`,
+rocky 는 `rocky.json` 의 `statusline` 블록을 `config::from_block` 으로). 공개 함수의 시그니처를 바꾸면 rocky 를 깨므로
+PR 본문에 적는다.
 
 ## 불변 조건 (반드시 지킬 것)
 

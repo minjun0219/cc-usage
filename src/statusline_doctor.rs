@@ -175,7 +175,10 @@ pub fn doctor(
 /// extra 명령을 statusline 과 같은 경로로 돌려 무슨 일이 났는지 말한다.
 fn print_extras(cfg: &StatuslineConfig, session: Option<&str>) {
     if cfg.extra_commands.is_empty() {
-        println!("extraCommands: 없음 (다른 도구 줄을 붙이는 법: cc-usage config)");
+        println!(
+            "extraCommands: 없음 (다른 도구 줄을 붙이는 법: {})",
+            crate::profile::get().extra_commands_hint
+        );
         return;
     }
     let cwd = std::env::current_dir()

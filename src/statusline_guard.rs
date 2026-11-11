@@ -19,7 +19,11 @@ use crate::statusline_cache::{read, state_file, usage_file, write, Slot};
 
 /// 막을 때 사용자에게 보일 문구(stderr) — 훅이 exit 2 로 끝나면 Claude Code 가 prompt 를 버리고 이것을 보인다.
 pub fn block_message(reason: &str) -> String {
-    format!("[cc-usage] {reason}.\n계속하려면 터미널에서: cc-usage allow 30m")
+    let p = crate::profile::get();
+    format!(
+        "[{}] {reason}.\n계속하려면 터미널에서: {} 30m",
+        p.name, p.allow_command
+    )
 }
 
 /// 이 prompt 를 막나 — 막으면 그 이유. 훅의 stdin(prompt JSON)은 읽어서 버린다.
@@ -64,7 +68,7 @@ pub fn allow(arg: Option<&str>, now: DateTime<Utc>) -> Result<String, String> {
     let (file, message) = if arg == "off" || arg == "0" {
         (
             AllowFile::default(),
-            "[cc-usage] guard 다시 활성화".to_string(),
+            format!("[{}] guard 다시 활성화", crate::profile::get().name),
         )
     } else {
         let until = parse_go_duration(arg)
@@ -72,7 +76,8 @@ pub fn allow(arg: Option<&str>, now: DateTime<Utc>) -> Result<String, String> {
             .and_then(|d| now.checked_add_signed(d))
             .ok_or_else(|| format!("invalid duration {arg:?} (예: 30m, 2h)"))?;
         let message = format!(
-            "[cc-usage] {}까지 크레딧 사용 허용",
+            "[{}] {}까지 크레딧 사용 허용",
+            crate::profile::get().name,
             until.with_timezone(&Local).format("%H:%M")
         );
         (
@@ -86,7 +91,7 @@ pub fn allow(arg: Option<&str>, now: DateTime<Utc>) -> Result<String, String> {
     Ok(message)
 }
 
-/// `<cache>/cc-usage/allow.json` — 계정과 상관없이 하나.
+/// `<cache>/cc-usage/allow.json`(`profile::get().cache_dir`) — 계정과 상관없이 하나.
 pub fn allow_path() -> Option<PathBuf> {
     let home = PathBuf::from(std::env::var("HOME").ok().filter(|h| !h.is_empty())?);
     let root = claude_account::cache_root(std::env::var("XDG_CACHE_HOME").ok().as_deref(), &home);

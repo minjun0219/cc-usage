@@ -266,7 +266,7 @@ pub fn lines<Tz: TimeZone>(v: &View, s: &Style, tz: &Tz) -> Vec<String> {
     }
     if out.is_empty() {
         // 모든 세그먼트가 비어도 무엇이 도는지는 보이게 한다.
-        out.push(s.c(DIM, "[cc-usage]"));
+        out.push(s.c(DIM, &format!("[{}]", crate::profile::get().name)));
     }
     out
 }
