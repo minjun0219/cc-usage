@@ -324,7 +324,7 @@ fn credit_line(v: &View, s: &Style) -> String {
         tail += &format!(" · 이번 window +{}", money(cur, cv.spent_window));
     }
     if cv.spending {
-        t += &s.c(&format!("{BOLD}{RED}"), &format!("{tail} · 크레딧 소진 중"));
+        t += &s.c(&format!("{BOLD}{RED}"), &tail);
     } else if v.limits.exhausted() {
         t += &s.c(YELLOW, &format!("{tail} · 다음 prompt부터 크레딧 사용"));
     } else {
