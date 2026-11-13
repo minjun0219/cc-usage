@@ -271,7 +271,7 @@ pub fn lines<Tz: TimeZone>(v: &View, s: &Style, tz: &Tz) -> Vec<String> {
     out
 }
 
-/// 크레딧을 제 줄로 내리나. 강조가 붙는 상태(소진 중 · 한도 소진 · 조회 중 · 비활성)는 늘 내리고 — 줄이 하나
+/// 크레딧을 제 줄로 내리나. 크레딧을 쓰는 중 · 한도 소진 · 조회 중 · 비활성이면 늘 내리고 — 줄이 하나
 /// 느는 것 자체가 신호다 —, 폭을 알면 붙였을 때 오른쪽 여백(`RIGHT_MARGIN`)을 침범하는지 본다.
 fn credit_standalone(
     v: &View,
@@ -319,16 +319,9 @@ fn credit_line(v: &View, s: &Style) -> String {
         }
         None => s.c(DIM, &money(cur, cv.used)) + &s.c(DIM, " 사용"),
     };
-    let mut tail = String::new();
-    if cv.spent_window > 0.0 {
-        tail += &format!(" · 이번 window +{}", money(cur, cv.spent_window));
-    }
-    if cv.spending {
-        t += &s.c(&format!("{BOLD}{RED}"), &tail);
-    } else if v.limits.exhausted() {
-        t += &s.c(YELLOW, &format!("{tail} · 다음 prompt부터 크레딧 사용"));
-    } else {
-        t += &s.c(DIM, &tail);
+    // 쓰는 중이면 문구를 달지 않는다 — 줄이 따로 내려가는 것이 신호다. 소진 직후 아직 쓰기 전에만 안내한다.
+    if !cv.spending && v.limits.exhausted() {
+        t += &s.c(YELLOW, " · 다음 prompt부터 크레딧 사용");
     }
     t
 }
