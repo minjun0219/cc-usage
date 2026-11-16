@@ -63,7 +63,7 @@ pub fn email_from_account_file(raw: &str) -> Option<String> {
 pub struct AccountFile {
     /// 로그인된 이메일 — 없으면 빈 값(API 키 인증 등).
     pub email: String,
-    /// 크레딧(extra usage)이 켜져 있나 — 필드가 없으면 `None`(모름). guard 가 usage 응답이 없는 구간을 이것으로 메운다.
+    /// 크레딧(extra usage)이 켜져 있나 — 필드가 없으면 `None`(모름). `doctor` 가 usage 응답이 없는 구간을 이것으로 메운다.
     /// "필드 없음" 과 `false` 를 가른다 — 같게 다루면 이 필드를 쓰지 않는 설치에서 크레딧이 켜져 있어도 꺼진 것으로 단정한다.
     pub extra_usage_enabled: Option<bool>,
 }
@@ -106,12 +106,6 @@ pub fn cache_root(xdg_cache_home: Option<&str>, home: &Path) -> PathBuf {
 /// 이 설정 폴더의 캐시 자리 — 계정 캐시(`account.json`)가 여기 있다.
 pub fn cache_slot(cache_root: &Path, config_dir: &Path) -> PathBuf {
     app_cache(cache_root).join(short_hash(&clean(config_dir).to_string_lossy()))
-}
-
-/// guard 를 잠시 끄는 `allow.json` — 계정과 상관없이 하나다. 막힌 세션과 다른 환경(다른 `CLAUDE_CONFIG_DIR`)의 터미널에서
-/// 불러도 풀려야 한다.
-pub fn allow_file(cache_root: &Path) -> PathBuf {
-    app_cache(cache_root).join("allow.json")
 }
 
 /// 캐시 루트 아래 이 실행 파일의 폴더 — `profile::get().cache_dir`(cc-usage 는 `cc-usage`).

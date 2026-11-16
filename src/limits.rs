@@ -13,9 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 mod agy;
-mod guard;
 pub use agy::{agy_limits, local_limits, AgyQuota, PRODUCT_ANTIGRAVITY};
-pub use guard::{credits_enabled, guard, parse_go_duration, AllowFile};
 
 /// 한도를 어디서 읽나 — `statusline.source`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -54,9 +52,6 @@ impl Source {
 /// statusline 이 이번 실행에서만 쓸 `source` — 설정값을 환경 변수(`profile::get().source_env`, cc-usage 는
 /// `CC_USAGE_SOURCE`)가, 그것을 `--source` 플래그가 이긴다. 갱신 자식에게도 같은 환경 변수로 넘긴다(`cc-usage refresh`).
 ///
-/// **guard 는 이것을 보지 않는다** — 환경 변수는 프로세스 트리로 물려 내려가서, 다른 호스트 때문에 셸에 export 해 둔
-/// `none` 이 같은 셸에서 띄운 Claude Code 의 guard 를 아무 표시 없이 끈다. guard 는 설정 파일만 본다.
-///
 /// 설정값 → 환경 변수 → 플래그 순으로 덮는다. 모르는 환경 변수 값은 무시하고(오타 하나로 설정값까지 잃지 않게), 모르는
 /// 플래그 값은 에러다 — 명령줄은 고친 사람이 바로 결과를 본다. 빈 값은 덮지 않는다.
 pub fn override_source(
@@ -90,8 +85,6 @@ pub struct LimitsConfig {
     pub credit_poll_seconds: Option<u64>,
     /// 크레딧을 안 쓸 때 금액을 옅게, 쓰기 시작하면 원래 색으로 페이드(`creditFade`) — 없으면 켜짐. 끄면 늘 원래 색.
     pub credit_fade: Option<bool>,
-    /// `cc-usage guard` 를 켠다 — 없으면 꺼짐(훅을 걸어도 아무것도 막지 않는다).
-    pub guard: bool,
 }
 
 impl LimitsConfig {
@@ -845,5 +838,14 @@ pub fn credits(
         limit: extra.monthly_limit.map(|l| l / div),
         spent_window,
         spending,
+    }
+}
+
+/// 크레딧이 켜져 있나 — 관측값(usage 응답)이 힌트(계정 파일의 `hasExtraUsageEnabled`)를 이긴다. 계정 파일은 크레딧을 켜고
+/// 끈 직후 뒤처질 수 있지만 관측값은 그 계정으로 실제 받은 응답이다. `None` 은 어느 쪽도 모른다는 뜻이다. `doctor` 가 쓴다.
+pub fn credits_enabled(usage: &UsageCache, hint: Option<bool>) -> Option<bool> {
+    match usage.usage.as_ref().and_then(|u| u.extra.as_ref()) {
+        Some(extra) => Some(extra.enabled),
+        None => hint,
     }
 }

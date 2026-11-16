@@ -11,12 +11,10 @@ use std::sync::OnceLock;
 pub struct Profile {
     /// 메시지 머리(`[name]`)와 usage API 의 `User-Agent`.
     pub name: &'static str,
-    /// 캐시 루트 아래의 폴더 — `<cache>/<cache_dir...>/<config_dir 해시>/…`, `allow.json` 도 여기.
+    /// 캐시 루트 아래의 폴더 — `<cache>/<cache_dir...>/<config_dir 해시>/…`.
     pub cache_dir: &'static [&'static str],
     /// statusline 이 detached 로 띄우는 갱신의 인자(실행 파일은 자기 자신).
     pub refresh_args: &'static [&'static str],
-    /// guard 가 막을 때 안내하는 해제 명령(인자 없이 — 뒤에 ` 30m` 이 붙는다).
-    pub allow_command: &'static str,
     /// `doctor` 가 `extraCommands` 가 없을 때 가리키는 안내.
     pub extra_commands_hint: &'static str,
     /// 이번 실행의 `source` 를 바꾸는 환경 변수 — 부모 statusline 이 갱신 프로세스로 넘길 때도 쓴다.
@@ -34,7 +32,6 @@ pub const CC_USAGE: Profile = Profile {
     name: "cc-usage",
     cache_dir: &["cc-usage"],
     refresh_args: &["refresh"],
-    allow_command: "cc-usage allow",
     extra_commands_hint: "cc-usage config",
     source_env: "CC_USAGE_SOURCE",
     nested_env: "CC_USAGE_NESTED",
@@ -66,7 +63,6 @@ mod tests {
         name: "other",
         cache_dir: &["other", "statusline"],
         refresh_args: &["statusline", "refresh"],
-        allow_command: "other statusline allow",
         extra_commands_hint: "docs",
         source_env: "OTHER_SOURCE",
         nested_env: "OTHER_NESTED",
@@ -83,14 +79,6 @@ mod tests {
         let root = Path::new("/c");
         let slot = crate::claude_account::cache_slot(root, Path::new("/home/me/.claude"));
         assert!(slot.starts_with("/c/other/statusline"), "{slot:?}");
-        assert_eq!(
-            crate::claude_account::allow_file(root),
-            Path::new("/c/other/statusline/allow.json")
-        );
-        assert_eq!(
-            crate::statusline_guard::block_message("한도 소진"),
-            "[other] 한도 소진.\n계속하려면 터미널에서: other statusline allow 30m"
-        );
         assert_eq!(crate::bounded::nested_env(), "OTHER_NESTED");
     }
 }

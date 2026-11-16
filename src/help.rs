@@ -3,13 +3,11 @@
 //!
 //! 예시에 특정 도구 이름을 넣지 않는다. cc-usage 는 extraCommands 로 부르는 것이 무엇인지 모른다(AGENTS.md).
 
-pub const USAGE: &str = "cc-usage — Claude Code statusline / 크레딧 guard
+pub const USAGE: &str = "cc-usage — Claude Code statusline
 
 사용법:
   cc-usage statusline [--source S]
                                statusLine command (stdin JSON → stdout)
-  cc-usage guard               UserPromptSubmit hook (한도 소진 시 exit 2)
-  cc-usage allow [DURATION|off]   guard 일시 해제 (기본 30m, 예: 2h · 1h30m)
   cc-usage probe               usage API 원본 응답 출력 (필드 확인용)
   cc-usage doctor [--session ID]
                                설정·계정·token·cache·keychain 후보·extraCommands 진단
@@ -55,7 +53,7 @@ pub const STATUSLINE: &str = r#"cc-usage statusline — Claude Code 의 statusLi
 
   --source auto|stdin|api|none
         설정의 source 를 이 statusline 실행에서만 바꾼다 ($CC_USAGE_SOURCE 도 같다. 플래그가
-        이긴다). guard 에는 먹지 않는다 — guard 는 설정 파일의 source 만 본다.
+        이긴다).
         none 은 token·API·cache 를 일절 보지 않고 1번 줄과 모델 · ctx 만 그린다
         (extraCommands 는 그대로 붙는다).
 
@@ -82,7 +80,6 @@ pub const FIELDS: &str = r#"필드 (모두 생략 가능, 이름은 rocky.json �
   creditFade           true            안 쓸 때 금액을 옅게, 쓰기 시작하면 3초에 걸쳐 원래 색
   alwaysShowCredits    false           크레딧이 0 이어도 표시
   alertPercent         90              임박 강조 임계. 0 이면 소진만 강조
-  guard                false           cc-usage guard 활성화
   dirLink              –               경로를 OSC 8 링크로 (예: vscode://file{{cwd}})
   badges               –               { "<email>": { "emoji": "…" } 또는 { "glyph": "◆", "color": "blue" } }
                                        로그인된 계정별 머리표

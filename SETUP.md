@@ -8,9 +8,7 @@ repo를 고치는 작업이면 [CLAUDE.md](CLAUDE.md)·[AGENTS.md](AGENTS.md)를
 ## 소개
 
 - **개인용 도구다.** 주인 한 사람이 자기 머신(회사 맥 · 집 맥)에 깔아 쓰려고 만들었다. 릴리스·패키지·Homebrew 배포가 없고, 소스에서 빌드해 설치하는 것이 유일한 방법이다.
-- 하는 일은 둘이다.
-  1. **Claude Code `statusLine` command**: 경로·git·모델·ctx·5h/7d 한도·크레딧을 2-3줄로 표시한다.
-  2. **`UserPromptSubmit` hook (`guard`)**: 한도가 소진돼 크레딧이 차감되기 시작하면 prompt를 막는다. 기본은 꺼져 있다.
+- 하는 일은 **Claude Code `statusLine` command** 하나다. 경로·git·모델·ctx·5h/7d 한도·크레딧을 2-3줄로 표시한다.
 - Rust 단일 바이너리다. 런타임 의존성(`jq`·`python` 등)이 없다.
 - Team 계정의 5h/7d·크레딧은 **비공식** `/api/oauth/usage`에서 읽는다. rate limit이 매우 낮다.
 - 동작은 [README.md](README.md)에 자세히 나온다. 바이너리만 있을 때는 `cc-usage --help` · `cc-usage config`를 본다.
@@ -93,16 +91,7 @@ cc-usage version
 - `refreshInterval: 60`은 cache를 다시 읽는 주기일 뿐 API 호출 주기가 아니다.
 - `CLAUDE_CONFIG_DIR`로 Claude Code를 따로 실행하는 계정이 있으면 그 디렉터리의 `settings.json`에도 같은 `statusLine` 설정을 넣는다. cache 는 계정마다 저절로 갈린다(README의 [계정 나누기](README.md#계정-나누기)).
 
-**guard는 사용자가 원할 때만** 켠다. 켜려면 둘 다 필요하다.
-
-1. `config.json`에 `"guard": true`
-2. `settings.json`의 `hooks.UserPromptSubmit` 배열에 **항목을 추가**한다(기존 hook을 지우지 않는다)
-
-```json
-{ "hooks": [ { "type": "command", "command": "~/.local/bin/cc-usage guard" } ] }
-```
-
-guard는 설정 오류·데이터 없음에서 막지 않는다(fail-open). 막혔을 때 사용자가 풀려면 `cc-usage allow 30m`을 실행한다.
+**guard는 없어졌다.** `hooks.UserPromptSubmit`에 `cc-usage guard` 항목을 넣지 않는다. 이미 깔린 머신에 그 항목이 남아 있으면 사용자에게 알리고 지워도 된다고 말한다. 남아 있어도 아무것도 하지 않고 exit 0으로 끝나서 prompt를 막지 않는다. `config.json`의 `"guard"` 필드도 무시된다.
 
 ### 5. 확인
 

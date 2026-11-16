@@ -3,14 +3,5 @@
     "type": "command",
     "command": "~/.local/bin/cc-usage statusline",
     "refreshInterval": 60
-  },
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          { "type": "command", "command": "~/.local/bin/cc-usage guard" }
-        ]
-      }
-    ]
   }
 }

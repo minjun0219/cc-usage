@@ -1,6 +1,6 @@
 # cc-usage
 
-Claude Code statusline + 크레딧 guard. 설정은 한 벌이고, cache는 Claude Code 설정 폴더와 로그인된 계정(이메일)마다 저절로 갈립니다.
+Claude Code statusline. 설정은 한 벌이고, cache는 Claude Code 설정 폴더와 로그인된 계정(이메일)마다 저절로 갈립니다.
 
 > **개인용 도구입니다.** 릴리스 없이 소스에서 빌드해 씁니다. 새 머신에 적용하는 에이전트는 [SETUP.md](SETUP.md)부터 보세요. 설치 순서, 기존 설정과 병합하는 법, 하지 말아야 할 것이 정리돼 있습니다.
 
@@ -94,8 +94,6 @@ CLAUDE_CONFIG_DIR=~/.claude-work claude
 
 keychain 항목 이름도 Claude Code 규칙(`CLAUDE_CONFIG_DIR`이 있으면 `Claude Code-credentials-<sha256(값) 앞 8자리>`)으로 찾습니다(2026-10-06 실측). 설정의 `keychainService`·`credentialsFile`은 `configDir`(기본 `~/.claude`) 세션에만 씁니다 — 다른 폴더의 세션에 쓰면 다른 계정의 token을 집기 때문입니다.
 
-`guard` 해제 파일(`allow.json`)은 계정과 상관없이 하나입니다. 막힌 세션과 다른 환경의 터미널에서 `cc-usage allow`를 불러도 풀리게 하려는 것입니다.
-
 설정 자체를 머신마다 다르게 두려면 `CC_USAGE_CONFIG`로 다른 파일을 가리킵니다.
 
 ### 1. `~/.config/cc-usage/config.json`
@@ -105,7 +103,7 @@ keychain 항목 이름도 Claude Code 규칙(`CLAUDE_CONFIG_DIR`이 있으면 `C
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
 | `configDir` | `~/.claude` | Claude Code 설정 폴더. 세션의 `CLAUDE_CONFIG_DIR`가 이깁니다 |
-| `source` | `auto` | `stdin` / `api` / `auto` / `none`. statusline에서는 `$CC_USAGE_SOURCE`와 `--source`가 우선합니다(guard는 설정 파일만 봅니다) |
+| `source` | `auto` | `stdin` / `api` / `auto` / `none`. statusline에서는 `$CC_USAGE_SOURCE`와 `--source`가 우선합니다 |
 | `keychainService` | `Claude Code-credentials` | macOS keychain 항목 이름. `configDir` 세션에만 씁니다 |
 | `credentialsFile` | `<configDir>/.credentials.json` | Linux 등 keychain이 없을 때 |
 | `tokenEnv` | – | 이 환경변수에 token이 있으면 우선 사용 |
@@ -117,7 +115,6 @@ keychain 항목 이름도 Claude Code 규칙(`CLAUDE_CONFIG_DIR`이 있으면 `C
 | `alwaysShowCredits` | false | 크레딧이 0이어도 줄 표시. stdin 모드에서는 한도 전에도 API를 호출하게 됩니다 |
 | `badges` | – | 로그인된 계정을 이메일로 알아보는 표시 (아래 참고) |
 | `alertPercent` | 90 | 이 %를 넘으면 "임박" 강조. **`0`이면 임박 경고를 끄고** 소진(100%)만 강조 |
-| `guard` | false | `cc-usage guard` 활성화 |
 | `dirLink` | – | 경로를 OSC 8 링크로 감쌉니다(예: `vscode://file{{cwd}}`). 터미널에서 Cmd+클릭 |
 | `extraCommands` | – | 다른 도구의 statusline 줄을 아래에 덧붙임 (아래 참고) |
 
@@ -236,33 +233,16 @@ rate limit이 낮으니 반복 실행은 피하세요.
 
 `refreshInterval: 60`은 API 호출과 무관하게 cache를 다시 읽는 주기일 뿐입니다.
 
-## Guard (선택)
+## Guard (없어짐)
 
-`guard: true`로 두고 `UserPromptSubmit` hook으로 등록하면, 다음 경우 prompt를 차단합니다 (exit 2).
+예전에는 한도가 소진되면 `UserPromptSubmit` hook(`cc-usage guard`)으로 prompt를 막았습니다. 지금은 없습니다. cache 기반이라 감지 전 소진분은 막지 못했고, 진행 중인 agent turn도 멈추지 못했습니다. 막혀도 `cc-usage allow`로 풀고 계속 쓰게 돼서 막는 것 자체가 의미가 적었습니다.
 
-- 5h 또는 7d가 100%이고, 크레딧이 켜져 있거나 아직 모르는 경우
-- 최근 15분 내 `used_credits` 증가가 관측된 경우
-
-크레딧을 쓰고 싶을 때:
-
-```bash
-cc-usage allow 30m   # 30분 허용
-cc-usage allow off   # 즉시 다시 차단
-```
-
-크레딧이 켜져 있는지는 `usage.json`(API 응답)을 먼저 보고 없으면 `.claude.json`의 `hasExtraUsageEnabled`를 봅니다. `source: "stdin"`은 한도에 닿기 전까지 API를 호출하지 않아 `usage.json`이 평소에 없습니다. `.claude.json`을 보면 그 구간에서 크레딧이 꺼진 계정까지 "크레딧이 차감됩니다"로 막히는 일이 없습니다. 지금 어느 쪽으로 읽히는지는 `cc-usage doctor`의 `크레딧(파일)` 줄에 나옵니다.
-
-한계:
-- cache 기반이라 감지 전 소진분은 막지 못합니다.
-- 이미 진행 중인 agent turn은 멈추지 않습니다.
-- 크레딧 활성 여부를 어느 쪽에서도 못 읽으면 막는 쪽으로 남습니다. 한도를 넘긴 상태에서 "모른다"는 "차감될 수도 있다"이기 때문입니다.
+예전 설치의 `settings.json`에 `cc-usage guard` hook이 남아 있어도 괜찮습니다. 이 명령은 아무것도 하지 않고 바로 끝납니다(exit 0). 정리하려면 그 hook을 지우세요. `config.json`의 `guard` 필드도 무시하니 지워도 됩니다.
 
 ## 명령
 
 ```
 cc-usage statusline [--source auto|stdin|api|none]
-cc-usage guard
-cc-usage allow [DURATION|off]
 cc-usage refresh          # statusline 이 detached 로 띄운다
 cc-usage probe
 cc-usage doctor [--session ID]

@@ -1,4 +1,4 @@
-//! cc-usage — Claude Code statusline + 크레딧 guard.
+//! cc-usage — Claude Code statusline.
 //!
 //! 순수 판정(`limits` · `claude_account` · `statusline` · `config`)과 파일·프로세스를 다루는 쪽(`bounded` ·
 //! `git_status` · `statusline_*` · `commands` · `update`)으로 나뉜다. 판정은 "지금"을 인자로 받아 테스트한다.
@@ -17,7 +17,6 @@ pub mod profile;
 pub mod statusline;
 pub mod statusline_cache;
 pub mod statusline_doctor;
-pub mod statusline_guard;
 pub mod statusline_refresh;
 #[cfg(feature = "cli")]
 pub mod update;

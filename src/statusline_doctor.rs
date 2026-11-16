@@ -1,14 +1,14 @@
 //! `cc-usage probe` · `doctor` — 한도 줄이 왜 안 나오는지, extra 줄이 왜 안 붙는지를 사람이 보는 명령. cc-usage `probe` ·
 //! `doctor` 의 이식. statusline 은 실패를 조용히 삼키므로 "왜" 는 여기서만 보인다.
 //!
-//! 진단은 실제 동작과 **같은 함수**로 계산한다 — 계정·토큰 자리(`Slot`·`find_token`), extra 실행(`bounded::run_extra`), guard 의
-//! 크레딧 판단(`limits::credits_enabled`). 따로 계산하면 둘이 어긋났을 때 화면이 실제 동작과 다른 말을 한다.
+//! 진단은 실제 동작과 **같은 함수**로 계산한다 — 계정·토큰 자리(`Slot`·`find_token`), extra 실행(`bounded::run_extra`).
+//! 따로 계산하면 둘이 어긋났을 때 화면이 실제 동작과 다른 말을 한다.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::claude_account;
 use crate::config::StatuslineConfig;
-use crate::limits::{credits_enabled, AllowFile, StateFile, UsageCache};
+use crate::limits::{account_cached, credits_enabled, AccountCache, StateFile, UsageCache};
 use crate::statusline::extra::{describe, Vars};
 use chrono::{DateTime, Local, SecondsFormat, Utc};
 
@@ -51,7 +51,7 @@ pub fn doctor(
     let (state, usage, account) = match &slot {
         Some(slot) => {
             println!("config_dir:    {}", slot.config_dir.display());
-            let (account, bucket) = crate::statusline_guard::account_bucket(slot);
+            let (account, bucket) = account_bucket(slot);
             match (&account, slot.account_paths.first()) {
                 (Some(a), _) if !a.email.is_empty() => println!("계정:          {}", a.email),
                 (Some(_), _) => println!("계정:          (이메일 없음 — API 키 인증 등)"),
@@ -95,41 +95,19 @@ pub fn doctor(
             (StateFile::default(), UsageCache::default(), None)
         }
     };
-    println!("guard:         {}", cfg.limits.guard);
 
-    // guard 가 한도 소진에서 실제로 막을지는 크레딧이 켜져 있느냐에 달렸다 — guard 와 같은 함수로 계산한다.
+    // 크레딧이 켜져 있나 — usage 응답이 있으면 그것, 없으면 계정 파일의 힌트.
     let hint = account.as_ref().and_then(|a| a.extra_usage_enabled);
     let observed = usage.usage.as_ref().is_some_and(|u| u.extra.is_some());
-    let (state_text, from, blocks) = match credits_enabled(&usage, hint) {
-        None => ("모름", "-", true), // 어느 쪽도 답을 내지 못했다
-        Some(true) => (
-            "켜짐",
-            if observed {
-                "usage.json"
-            } else {
-                ".claude.json"
-            },
-            true,
-        ),
-        Some(false) => (
-            "꺼짐",
-            if observed {
-                "usage.json"
-            } else {
-                ".claude.json"
-            },
-            false,
-        ),
+    let from = if observed {
+        "usage.json"
+    } else {
+        ".claude.json"
     };
-    // guard 가 꺼져 있으면 막고 안 막고를 말하지 않는다 — 어차피 아무것도 막지 않는다. 홈을 모르면 guard 는 캐시를 못 읽어
-    // 막지 않는다(fail-open).
-    let blocks = blocks && slot.is_some();
-    match (cfg.limits.guard, blocks) {
-        (false, _) => println!("크레딧:        {state_text} ({from})"),
-        (true, true) => {
-            println!("크레딧:        {state_text} ({from}) — 소진 시 guard 가 막습니다")
-        }
-        (true, false) => println!("크레딧:        {state_text} ({from}) — guard 가 막지 않습니다"),
+    match credits_enabled(&usage, hint) {
+        None => println!("크레딧:        모름 (-)"), // 어느 쪽도 답을 내지 못했다
+        Some(true) => println!("크레딧:        켜짐 ({from})"),
+        Some(false) => println!("크레딧:        꺼짐 ({from})"),
     }
     println!(
         "alert:         임박 {:.0}% (0이면 소진만)",
@@ -161,15 +139,26 @@ pub fn doctor(
 
     print_extras(cfg, session);
 
-    let allow: AllowFile = crate::statusline_guard::allow_path()
-        .map(|p| read(&p))
-        .unwrap_or_default();
-    let dump = serde_json::json!({ "state": state, "usage": usage, "allow": allow });
+    let dump = serde_json::json!({ "state": state, "usage": usage });
     println!(
         "{}",
         serde_json::to_string_pretty(&dump).unwrap_or_default()
     );
     Ok(())
+}
+
+/// 계정과 그 캐시 폴더 — 계정 파일을 직접 읽고, 못 읽으면 statusline 이 남긴 계정 캐시의 이메일로.
+fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, PathBuf) {
+    let account = slot.read_account();
+    let email = match &account {
+        Some(a) => Some(a.email.clone()),
+        None => {
+            let cached: AccountCache = read(&slot.account_file());
+            account_cached(&slot.account_source(), &cached).map(str::to_owned)
+        }
+    };
+    let bucket = slot.bucket(email.as_deref());
+    (account, bucket)
 }
 
 /// extra 명령을 statusline 과 같은 경로로 돌려 무슨 일이 났는지 말한다.

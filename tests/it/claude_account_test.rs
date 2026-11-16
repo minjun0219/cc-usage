@@ -200,10 +200,6 @@ fn account_file_carries_the_credit_hint() {
         None
     );
     assert_eq!(hint("not json"), None);
-    assert_eq!(
-        allow_file(Path::new("/c")),
-        PathBuf::from("/c/cc-usage/allow.json")
-    );
 }
 
 /// keychain 토큰이 만료됐으면 유효한 파일 토큰이 이긴다 — 만료 시각을 모르는 파일 토큰도 유효로 본다.

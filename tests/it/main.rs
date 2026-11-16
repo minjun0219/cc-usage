@@ -7,5 +7,4 @@ mod limits_test;
 mod statusline_cmd_test;
 mod statusline_doctor_test;
 mod statusline_golden_test;
-mod statusline_guard_test;
 mod statusline_refresh_test;

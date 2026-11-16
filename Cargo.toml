@@ -3,7 +3,7 @@ name = "cc-usage"
 version = "0.2.0"
 edition = "2021"
 license = "MIT"
-description = "Claude Code statusline + 크레딧 guard"
+description = "Claude Code statusline"
 publish = false
 
 [lib]
