@@ -460,9 +460,9 @@ fn full_records_when_an_alert_rose_and_blinks_from_there() {
     let config = r#"{"source":"stdin","keychainService":"cc-usage-test-absent"}"#;
     let hit =
         r#"{"model":{"display_name":"M"},"rate_limits":{"five_hour":{"used_percentage":100}}}"#;
-    // 처음 — 켜진 프레임(배지)이고 시각을 적는다. NO_COLOR 라 배지·굵은 빨강 모두 " 0% ".
+    // 처음 — 켜진 프레임(배지)이고 시각을 적는다. NO_COLOR 라 배지·굵은 빨강 모두 " 0% ". 크레딧은 같은 줄에 이어진다.
     let first = full_once(home, &[("CC_USAGE_NOW", NOW)], config, hit);
-    assert!(first.starts_with("M · 5h  0% \n"), "{first:?}");
+    assert!(first.starts_with("M · 5h  0%  · "), "{first:?}");
     let bucket = cc_usage::claude_account::cache_bucket(&slot(home, &home.join(".claude")), None);
     let state: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(bucket.join("state.json")).unwrap()).unwrap();

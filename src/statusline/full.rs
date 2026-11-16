@@ -242,7 +242,7 @@ pub fn lines<Tz: TimeZone>(v: &View, s: &Style, tz: &Tz) -> Vec<String> {
     // 배지는 세그먼트가 아니라 머리표다 — 구분자 없이 크레딧까지 다 이은 **뒤에** 앞에 붙인다. 폭 판단에는 따로 넘긴다.
     let badge = badge_text(v.badge, s);
     let standalone =
-        !credit.is_empty() && credit_standalone(v, s, &row, &credit, &sep, display_width(&badge));
+        !credit.is_empty() && credit_standalone(s, &row, &credit, &sep, display_width(&badge));
     if !credit.is_empty() && !standalone {
         if row.is_empty() {
             row = credit.clone();
@@ -271,20 +271,9 @@ pub fn lines<Tz: TimeZone>(v: &View, s: &Style, tz: &Tz) -> Vec<String> {
     out
 }
 
-/// 크레딧을 제 줄로 내리나. 크레딧을 쓰는 중 · 한도 소진 · 조회 중 · 비활성이면 늘 내리고 — 줄이 하나
-/// 느는 것 자체가 신호다 —, 폭을 알면 붙였을 때 오른쪽 여백(`RIGHT_MARGIN`)을 침범하는지 본다.
-fn credit_standalone(
-    v: &View,
-    s: &Style,
-    row: &str,
-    credit: &str,
-    sep: &str,
-    badge_width: usize,
-) -> bool {
-    let cv = &v.credits;
-    if !cv.enabled || cv.spending || v.limits.exhausted() {
-        return true;
-    }
+/// 크레딧을 제 줄로 내리나 — 폭을 알 때, 붙이면 오른쪽 여백(`RIGHT_MARGIN`)을 침범하는 경우만. 한도 소진이나 크레딧을
+/// 쓰는 중이라고 따로 내리지 않는다. 줄 수가 바뀌면 prompt 가 밀리고, 소진은 window 배지가 이미 말한다.
+fn credit_standalone(s: &Style, row: &str, credit: &str, sep: &str, badge_width: usize) -> bool {
     if s.width == 0 {
         return false;
     }

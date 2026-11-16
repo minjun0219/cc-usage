@@ -45,7 +45,7 @@ pub const STATUSLINE: &str = r#"cc-usage statusline — Claude Code 의 statusLi
   출력  stdout 으로 여러 줄
         1. 작업 경로 · git 브랜치/변경 (git repo 밖이면 경로만)
         2. [계정 배지] 모델 · ctx · 5h/7d 한도 · 크레딧
-           (한도가 소진되거나 폭이 모자라면 크레딧이 제 줄로 내려간다)
+           (붙이면 폭이 모자랄 때만 크레딧이 제 줄로 내려간다)
         3. 그 아래로 extraCommands 출력
 
   network 를 기다리지 않는다 — usage 갱신이 필요하면 refresh 를 detached 로 띄우고
