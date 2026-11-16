@@ -122,10 +122,6 @@ pub fn from_block(block: &serde_json::Map<String, serde_json::Value>) -> Statusl
         .get("alwaysShowCredits")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    cfg.limits.guard = block
-        .get("guard")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
     let extras = block.get("extraCommands").and_then(|v| v.as_array());
     cfg.extra_commands = extras
         .into_iter()

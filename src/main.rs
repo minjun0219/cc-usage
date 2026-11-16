@@ -1,6 +1,6 @@
 //! `cc-usage` 진입점 — 명령을 가르고 플래그를 읽어 각 모듈로 넘긴다.
 
-use cc_usage::{commands, config, help, statusline_doctor, statusline_guard, statusline_refresh};
+use cc_usage::{commands, config, help, statusline_doctor, statusline_refresh};
 
 fn main() {
     // Rust 런타임은 SIGPIPE 를 무시해 두므로 `cc-usage doctor | head -2` 처럼 읽는 쪽이 먼저 닫히면 `println!` 이
@@ -46,29 +46,11 @@ fn run(cmd: &str, args: &[String]) -> Result<(), String> {
             statusline_refresh::run(&cfg, commands::statusline_now());
             Ok(())
         }
-        // 막으면 exit 2 — Claude Code 가 prompt 를 버리고 stderr 를 보인다.
+        // guard 는 없어졌다. 예전 설치의 UserPromptSubmit 훅에 이 명령이 남아 있을 수 있는데, 모르는 명령으로 떨어지면
+        // exit 2 가 되고 Claude Code 는 exit 2 를 "막는다" 로 읽어 모든 prompt 를 버린다. 그래서 훅 입력만 버리고 0 으로
+        // 끝낸다. stdout 에는 아무것도 내지 않는다 — UserPromptSubmit 의 stdout 은 prompt 문맥에 붙는다.
         "guard" => {
-            Flags::parse(args, &[], &[])?;
-            let cfg = config::load_user();
-            if let Some(reason) = statusline_guard::check(&cfg, commands::statusline_now()) {
-                eprintln!("{}", statusline_guard::block_message(&reason));
-                std::process::exit(2);
-            }
-            Ok(())
-        }
-        "allow" => {
-            let flags = Flags::parse(args, &[], &[])?;
-            if flags.positionals.len() > 1 {
-                return Err(format!(
-                    "allow 는 인자를 하나만 받습니다: {:?}",
-                    flags.positionals
-                ));
-            }
-            let message = statusline_guard::allow(
-                flags.positionals.first().map(String::as_str),
-                commands::statusline_now(),
-            )?;
-            println!("{message}");
+            discard_stdin();
             Ok(())
         }
         "probe" => {
@@ -116,6 +98,15 @@ fn run(cmd: &str, args: &[String]) -> Result<(), String> {
             std::process::exit(2);
         }
     }
+}
+
+/// 훅 입력을 버린다 — 터미널에서 그냥 부르면(stdin 이 TTY) 읽지 않는다. 4MB 까지만.
+fn discard_stdin() {
+    use std::io::{IsTerminal, Read};
+    if std::io::stdin().is_terminal() {
+        return;
+    }
+    let _ = std::io::copy(&mut std::io::stdin().take(4 << 20), &mut std::io::sink());
 }
 
 fn is_help(a: &str) -> bool {

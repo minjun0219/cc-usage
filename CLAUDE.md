@@ -4,7 +4,7 @@
 > rocky 의 Rust 구현(`crates/rocky-core` · `crates/rocky-cli` 의 statusline 부분)을 그대로 가져와 Go 를 Rust 로 바꿨다. 모듈 이름을
 > rocky 와 같게 둬 두 레포를 견주기 쉽게 한다. 아래 실측 기록은 Go 판 시절의 것이고 판단 근거로 남긴다.
 
-Claude Code statusline + 크레딧 guard. Rust 단일 크레이트(lib `cc_usage` + bin `cc-usage`). 의존성은 `Cargo.toml` 에 적힌 것만 —
+Claude Code statusline. Rust 단일 크레이트(lib `cc_usage` + bin `cc-usage`). 의존성은 `Cargo.toml` 에 적힌 것만 —
 새 런타임 의존성은 따로 논의한다(AGENTS.md "의존성 최소화").
 
 **새 머신에 설치·적용하는 작업이면 [SETUP.md](SETUP.md)를 본다.** 이 문서와 AGENTS.md는 repo를 고치는 작업용이다.
@@ -12,17 +12,16 @@ Claude Code statusline + 크레딧 guard. Rust 단일 크레이트(lib `cc_usage
 ## 구조
 
 ```
-src/main.rs               명령 입구 (statusline, guard, allow, refresh, probe, doctor, config, update, version) · 플래그 파서
+src/main.rs               명령 입구 (statusline, refresh, probe, doctor, config, update, version, guard = no-op) · 플래그 파서
 src/help.rs               도움말 · `cc-usage config` 의 필드 표
 src/profile.rs            이름 묶음(환경 변수 · 캐시 폴더 · 메시지 머리 · 갱신 인자) — 기본 cc-usage, 라이브러리로 싣는 쪽이 `profile::set`
 src/config.rs             설정 파일(`config.json`, camelCase — rocky `rocky.json` 의 `statusline` 블록과 같은 모양)
-src/limits.rs             순수 판정: stdin 파싱, 모드 선택, refresh 필요 여부, 크레딧 baseline, 경보 (+ limits/agy.rs, limits/guard.rs)
+src/limits.rs             순수 판정: stdin 파싱, 모드 선택, refresh 필요 여부, 크레딧 baseline, 경보 (+ limits/agy.rs)
 src/claude_account.rs     순수 판정: 세션이 어느 계정인가, cache 자리, keychain 이름, token 파싱
 src/statusline/           순수 렌더: full(줄) · width(표시 폭) · git(porcelain 파싱) · extra(extraCommands 정의·치환)
 src/commands.rs           `statusline` 을 그리는 배선
 src/statusline_cache.rs   cache 파일 읽고 쓰기(account/state/usage.json, 0600, atomic)
 src/statusline_refresh.rs usage API 1회 조회(detached, flock, backoff), token 찾기(read-only)
-src/statusline_guard.rs   guard · allow
 src/statusline_doctor.rs  probe · doctor
 src/bounded.rs            마감 있는 하위 프로세스(그룹째 kill) — git 과 extraCommands
 src/update.rs             `update` — 소스 체크아웃에서 pull → cargo test → release 빌드 → 설치
@@ -36,7 +35,7 @@ examples/                 config, settings.json 예시, preview.sh
 
 rocky 가 이 크레이트를 Cargo git dependency 로 싣는다(`default-features = false` — `cli` feature 의 `help` · `update` ·
 `VERSION` 은 빠진다). 그래서 **이름을 코드에 박지 않는다**: 환경 변수 · 캐시 폴더 · `[cc-usage]` 머리 · User-Agent ·
-갱신 명령줄 · guard 안내는 `profile::get()` 에서 읽는다. 설정은 부르는 쪽이 읽어 넘긴다(`cmd_statusline(source, cfg)`,
+갱신 명령줄은 `profile::get()` 에서 읽는다. 설정은 부르는 쪽이 읽어 넘긴다(`cmd_statusline(source, cfg)`,
 rocky 는 `rocky.json` 의 `statusline` 블록을 `config::from_block` 으로). 공개 함수의 시그니처를 바꾸면 rocky 를 깨므로
 PR 본문에 적는다.
 
@@ -49,7 +48,8 @@ PR 본문에 적는다.
 2. `usage.json`은 `refresh`만, `state.json`은 `statusline`만 쓴다. writer를 섞지 않는다.
 3. credential 파일과 keychain은 읽기만 한다. token refresh 구현 금지.
 4. 비공식 API 응답의 모든 필드는 optional로 취급한다. 파싱 실패로 statusline이 비면 안 된다.
-5. `guard`는 설정 오류나 데이터 없음에서 차단하지 않는다 (fail-open).
+5. `guard` 명령은 **아무것도 하지 않고 exit 0** 으로 끝난다(stdout 도 비운다). guard 는 2026-11-16에 뺐지만 예전 설치의
+   `UserPromptSubmit` 훅에 남아 있을 수 있다. 이 명령을 지워 모르는 명령(exit 2)으로 떨어지면 Claude Code 가 모든 prompt 를 막는다.
 6. 판단 로직은 순수 모듈(`limits` · `claude_account` · `statusline`)에 두고 "지금"(`DateTime<Utc>`)을 인자로 받아 테스트 가능하게 유지한다.
 7. 계정은 **세션 환경**으로 정한다: 설정 폴더 = `CLAUDE_CONFIG_DIR` > `configDir` > `~/.claude`. `CLAUDE_CONFIG_DIR` 이면 그 폴더의
    `.claude.json` 하나만 본다(못 읽어도 다른 후보로 넘어가지 않는다 — 다른 계정의 이메일을 집는다). 이 우선순위를 바꾸면 다른
@@ -76,17 +76,15 @@ PR 본문에 적는다.
 
 **Team 계정과 개인 계정은 `organizationUuid`로 갈리지 않는다.** 개인 계정에도 이 필드가 있다(2026-09-18 양쪽 실측). `.claude.json`만으로 계정을 구분하려면 `oauthAccount.emailAddress`뿐이고, 두 계정 모두 채워져 온다. 확실히 구분하는 `organization_type`(`claude_team`)·`seat_tier`(`team_tier_1`)는 **`/api/oauth/profile`에** 있어서 API 호출이 필요하다. cc-usage는 아직 이 엔드포인트를 쓰지 않는다.
 
-**`.claude.json`의 `oauthAccount.hasExtraUsageEnabled`로** 크레딧 활성 여부를 API 없이 알 수 있다. **guard가 쓴다** (`account.ExtraUsageEnabled` → `core.Guard`). `usage.json`의 관측값이 있으면 그 값이 우선하고 없을 때만 이 힌트로 판단한다.
+**`.claude.json`의 `oauthAccount.hasExtraUsageEnabled`로** 크레딧 활성 여부를 API 없이 알 수 있다. guard 가 쓰던 힌트이고, guard 를 뺀 뒤로는 `doctor` 의 `크레딧:` 줄만 쓴다(`limits::credits_enabled`). `usage.json`의 관측값이 있으면 그 값이 우선하고 없을 때만 이 힌트로 판단한다.
 
-그 전에 이 문단에 적혀 있던 "cache 가 비면 fail-open 으로 통과"는 **틀린 서술이었다.** 실제로는 `uf.Usage == nil`이 `!Enabled` 분기로 들어가지 못해 **차단**했다. `source: "stdin"`은 한도에 닿기 전까지 API를 호출하지 않아 `usage.json`이 평소에 없으므로, 크레딧이 꺼진 계정도 소진 직후 첫 prompt에서 "크레딧이 차감됩니다"로 막혔다. 재현은 임시 `XDG_CONFIG_HOME`/`XDG_CACHE_HOME`에 `five_hour.percent: 100`인 `state.json`을 넣고 `cc-usage guard`를 실행하면 된다.
+"필드 없음"과 `false`는 반드시 구분한다(그래서 `Option<bool>`이다). 같게 다루면 이 필드가 없는 설치에서 크레딧이 켜져 있어도 꺼진 것으로 단정한다.
 
-"필드 없음"과 `false`는 반드시 구분한다(그래서 `*bool`이다). 같게 다루면 이 필드가 없는 설치에서 크레딧이 켜져 있어도 꺼진 것으로 단정해 **막아야 할 때 통과시킨다**.
-
-**Team 계정은 `extra_usage.is_enabled: true`다** (2026-09-18 확인). 개인 계정의 `false`(`out_of_credits`)와 다르다. guard가 실제로 막을 상황은 Team 계정 쪽에 있다.
+**Team 계정은 `extra_usage.is_enabled: true`다** (2026-09-18 확인). 개인 계정의 `false`(`out_of_credits`)와 다르다.
 
 **`COLUMNS`·`LINES`는 실제로 온다.** 이 맥의 Ghostty에서 `COLUMNS=127 LINES=72`로 확인했다(`extra_commands`로 환경을 출력해 봤다). statusline은 stdout이 pipe라 `tput`·ioctl로는 폭을 읽지 못한다. 대신 Claude Code가 렌더링 직전에 이 둘을 넣어 준다. 공식 문서에도 명시돼 있다. `LINES`는 아직 쓰지 않는다.
 
-아직 쓰지 않는 필드: `decimal_places` · `currency`("USD") · `spend_limit_reached` · `user_disabled` · `disabled_reason`. 앞 둘은 `credit_divisor`/`currency` 설정을 없앨 근거가 되고, `spend_limit_reached`는 guard가 볼 만하다.
+아직 쓰지 않는 필드: `decimal_places` · `currency`("USD") · `spend_limit_reached` · `user_disabled` · `disabled_reason`. 앞 둘은 `credit_divisor`/`currency` 설정을 없앨 근거가 된다.
 
 ## keychain service 이름 (2026-09-19 확인)
 

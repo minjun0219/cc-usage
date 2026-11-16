@@ -471,13 +471,13 @@ fn probe_fails_with_the_reason() {
     }
 }
 
-/// `doctor` — 설정·계정·토큰·크레딧·extra 를 줄마다. 크레딧 줄은 guard 와 같은 판단(관측값 > 계정 파일 힌트).
+/// `doctor` — 설정·계정·토큰·크레딧·extra 를 줄마다. 크레딧 줄은 관측값이 계정 파일 힌트를 이긴다.
 #[test]
 fn doctor_reports_what_statusline_would_do() {
     let home = Home::new(
         Some(EMAIL),
         serde_json::json!({
-            "source": "api", "guard": true, "tokenEnv": "CC_USAGE_TEST_TOKEN", "alertPercent": 80,
+            "source": "api", "tokenEnv": "CC_USAGE_TEST_TOKEN", "alertPercent": 80,
             // 마감에 걸리지 않아야 할 명령은 넉넉히 — 기본 300ms 는 CI 러너가 바쁘면 넘는다. 마감 동작은 `sleep 5` 가 본다.
             "extraCommands": [
                 {"command": ["sh", "-c", "echo one; echo two"], "timeoutMs": 5000},
@@ -500,8 +500,7 @@ fn doctor_reports_what_statusline_would_do() {
         "keychain:      cc-usage-test-absent".to_string(),
         format!("creds file:    {home_dir}/.claude/.credentials.json"),
         format!("cache dir:     {}", home.bucket(Some(EMAIL)).display()),
-        "guard:         true".to_string(),
-        "크레딧:        모름 (-) — 소진 시 guard 가 막습니다".to_string(),
+        "크레딧:        모름 (-)\n".to_string(),
         "alert:         임박 80% (0이면 소진만)".to_string(),
         "token:         ok (source=env:CC_USAGE_TEST_TOKEN, expires=unknown)".to_string(),
         "extraCommands: 6개".to_string(),
@@ -517,7 +516,7 @@ fn doctor_reports_what_statusline_would_do() {
         assert!(out.contains(&want), "{want:?} 가 없다:\n{out}");
     }
 
-    // --session 을 주면 치환한 argv 를 함께 보인다. 크레딧이 꺼진 관측값이면 guard 가 막지 않는다고 말한다.
+    // --session 을 주면 치환한 argv 를 함께 보인다. 크레딧이 꺼진 관측값이면 꺼짐이라고 말한다.
     std::fs::create_dir_all(home.bucket(Some(EMAIL))).unwrap();
     std::fs::write(
         home.bucket(Some(EMAIL)).join("usage.json"),
@@ -534,10 +533,7 @@ fn doctor_reports_what_statusline_would_do() {
         out.contains("  [2] tool {{session_id}}\n      = tool s-1\n"),
         "{out}"
     );
-    assert!(
-        out.contains("크레딧:        꺼짐 (usage.json) — guard 가 막지 않습니다"),
-        "{out}"
-    );
+    assert!(out.contains("크레딧:        꺼짐 (usage.json)\n"), "{out}");
 }
 
 /// 비기본 설정 폴더 세션은 그 폴더의 keychain 이름과 credentials 를 본다. 만료된 토큰은 이유와 출처를 함께.
@@ -580,14 +576,11 @@ fn doctor_shows_the_session_dirs_keychain_and_expired_tokens() {
     );
 }
 
-/// 계정 파일을 못 읽으면(원자적 재작성 중 등) guard 는 statusline 이 남긴 계정 캐시로 간다 — doctor 도 같은 폴더를 보인다.
-/// 홈을 모르면 guard 는 막지 않으므로 doctor 도 막는다고 말하지 않는다.
+/// 계정 파일을 못 읽으면(원자적 재작성 중 등) doctor 는 statusline 이 남긴 계정 캐시의 폴더를 보인다. 홈을 모르면 크레딧도
+/// 모른다.
 #[test]
-fn doctor_shows_the_bucket_guard_actually_reads() {
-    let home = Home::new(
-        Some(EMAIL),
-        serde_json::json!({"source": "api", "guard": true}),
-    );
+fn doctor_falls_back_to_the_cached_account_bucket() {
+    let home = Home::new(Some(EMAIL), serde_json::json!({"source": "api"}));
     let slot =
         cc_usage::claude_account::cache_slot(&home.path.join(".cache"), &home.path.join(".claude"));
     std::fs::create_dir_all(&slot).unwrap();
@@ -607,8 +600,5 @@ fn doctor_shows_the_bucket_guard_actually_reads() {
     );
 
     let (_, out, _) = home.run("http://127.0.0.1:1/usage", &[("HOME", "")], &["doctor"]);
-    assert!(
-        out.contains("크레딧:        모름 (-) — guard 가 막지 않습니다"),
-        "{out}"
-    );
+    assert!(out.contains("크레딧:        모름 (-)\n"), "{out}");
 }

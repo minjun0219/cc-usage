@@ -88,11 +88,37 @@ fn rev_list_counts_parse_as_behind_ahead() {
     assert_eq!(parse_counts("1\t2\t3"), None);
 }
 
+/// guard 는 없어졌지만 예전 UserPromptSubmit 훅에 남아 있을 수 있다 — exit 2 면 Claude Code 가 모든 prompt 를 버린다.
+/// 훅 입력을 받아 아무것도 내지 않고 0 으로 끝나야 한다(stdout 은 prompt 문맥에 붙는다).
 #[test]
-fn allow_takes_at_most_one_argument() {
-    let (code, _, err) = run(&["allow", "1h", "2h"]);
-    assert_eq!(code, 1);
-    assert!(err.contains("하나만"), "{err}");
+fn guard_left_in_an_old_hook_lets_every_prompt_through() {
+    use std::io::Write;
+    use std::process::Stdio;
+    let dir = tempfile::tempdir().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cc-usage"))
+        .env_clear()
+        .env("HOME", dir.path())
+        .args(["guard", "--whatever"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(br#"{"session_id":"s","prompt":"hi"}"#)
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(
+        (
+            out.status.code(),
+            out.stdout.as_slice(),
+            out.stderr.as_slice()
+        ),
+        (Some(0), &b""[..], &b""[..])
+    );
 }
 
 /// 설정 경로: `CC_USAGE_CONFIG` > `XDG_CONFIG_HOME/cc-usage/config.json` > `~/.config/cc-usage/config.json`.

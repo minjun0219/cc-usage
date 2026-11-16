@@ -879,14 +879,6 @@ fn source_override_flag_beats_env_beats_config() {
     }
 }
 
-fn guard_cfg(source: Source) -> LimitsConfig {
-    LimitsConfig {
-        source,
-        guard: true,
-        ..Default::default()
-    }
-}
-
 fn usage_with_extra(enabled: bool) -> UsageCache {
     UsageCache {
         usage: Some(CachedUsage {
@@ -900,137 +892,22 @@ fn usage_with_extra(enabled: bool) -> UsageCache {
     }
 }
 
-/// cc-usage `TestGuard` — 크레딧을 모르는 소진은 막고, allow 창·크레딧 꺼짐·guard 꺼짐이면 통과.
+/// 크레딧이 켜져 있나 — usage 응답이 없으면 계정 파일의 힌트가 메우고, 관측값이 있으면 그쪽이 이긴다. 둘 다 없으면 모른다.
 #[test]
-fn guard_blocks_exhaustion_unless_allowed_or_credits_are_off() {
-    use cc_usage::limits::{guard, AllowFile};
-    let mut c = guard_cfg(Source::Api);
-    let lim = Limits {
-        five_hour: win(100.0),
-        ..Default::default()
-    };
-    let mut allow = AllowFile::default();
-    let reason = guard(&c, &lim, &UsageCache::default(), &allow, None, now());
-    assert_eq!(
-        reason.as_deref(),
-        Some("사용량 한도 소진 (5h) — 이 prompt부터 크레딧이 차감됩니다")
-    );
-    allow.allow_until = Some(now() + TimeDelta::minutes(1));
-    assert_eq!(
-        guard(&c, &lim, &UsageCache::default(), &allow, None, now()),
-        None
-    );
-    // allow 창이 지났으면 다시 막는다.
-    allow.allow_until = Some(now() - TimeDelta::seconds(1));
-    assert!(guard(&c, &lim, &UsageCache::default(), &allow, None, now()).is_some());
-    allow.allow_until = None;
-    assert_eq!(
-        guard(&c, &lim, &usage_with_extra(false), &allow, None, now()),
-        None
-    );
-    c.guard = false;
-    assert_eq!(
-        guard(&c, &lim, &UsageCache::default(), &allow, None, now()),
-        None
-    );
-}
-
-/// cc-usage `TestGuardExtraHint` — usage 응답이 없는 구간은 계정 파일의 힌트가 메우고, 관측값이 있으면 그쪽이 이긴다.
-#[test]
-fn guard_uses_the_account_hint_until_usage_is_observed() {
-    use cc_usage::limits::{guard, AllowFile};
-    let c = guard_cfg(Source::Stdin);
-    let lim = Limits {
-        five_hour: win(100.0),
-        from_stdin: true,
-        ..Default::default()
-    };
-    let allow = AllowFile::default();
+fn credits_enabled_prefers_the_observed_usage_over_the_account_hint() {
+    use cc_usage::limits::credits_enabled;
     let none = UsageCache::default();
+    assert_eq!(credits_enabled(&none, None), None);
+    assert_eq!(credits_enabled(&none, Some(false)), Some(false));
+    assert_eq!(credits_enabled(&none, Some(true)), Some(true));
     assert_eq!(
-        guard(&c, &lim, &none, &allow, Some(false), now()),
-        None,
-        "힌트가 꺼짐인데 막았다"
-    );
-    assert!(guard(&c, &lim, &none, &allow, Some(true), now()).is_some());
-    assert!(
-        guard(&c, &lim, &none, &allow, None, now()).is_some(),
-        "모르면 막는다"
-    );
-    assert!(
-        guard(
-            &c,
-            &lim,
-            &usage_with_extra(true),
-            &allow,
-            Some(false),
-            now()
-        )
-        .is_some(),
+        credits_enabled(&usage_with_extra(true), Some(false)),
+        Some(true),
         "관측값(켜짐)이 힌트(꺼짐)에 졌다"
     );
     assert_eq!(
-        guard(
-            &c,
-            &lim,
-            &usage_with_extra(false),
-            &allow,
-            Some(true),
-            now()
-        ),
-        None,
+        credits_enabled(&usage_with_extra(false), Some(true)),
+        Some(false),
         "관측값(꺼짐)이 힌트(켜짐)에 졌다"
     );
-}
-
-/// 한도 안이어도 최근 크레딧이 늘었으면 막는다 — 리셋 직후의 늦은 차감·다른 기기의 사용.
-#[test]
-fn guard_blocks_recent_credit_spending_below_the_limit() {
-    use cc_usage::limits::{guard, AllowFile};
-    let c = guard_cfg(Source::Api);
-    let lim = Limits {
-        five_hour: win(40.0),
-        ..Default::default()
-    };
-    let mut usage = usage_with_extra(true);
-    usage
-        .usage
-        .as_mut()
-        .unwrap()
-        .extra
-        .as_mut()
-        .unwrap()
-        .used_credits = Some(500.0);
-    assert_eq!(
-        guard(&c, &lim, &usage, &AllowFile::default(), None, now()),
-        None
-    );
-    usage.credits_rising_at = Some(now() - TimeDelta::minutes(5));
-    assert_eq!(
-        guard(&c, &lim, &usage, &AllowFile::default(), None, now()).as_deref(),
-        Some("최근 크레딧 소진이 감지됐습니다")
-    );
-}
-
-#[test]
-fn go_durations_parse_like_time_parse_duration() {
-    use cc_usage::limits::parse_go_duration;
-    for (s, want) in [
-        ("30m", Some(TimeDelta::minutes(30))),
-        ("2h", Some(TimeDelta::hours(2))),
-        ("1h30m", Some(TimeDelta::minutes(90))),
-        ("1.5h", Some(TimeDelta::minutes(90))),
-        ("90s", Some(TimeDelta::seconds(90))),
-        ("500ms", Some(TimeDelta::milliseconds(500))),
-        ("0", Some(TimeDelta::zero())),
-        ("-1m", Some(TimeDelta::minutes(-1))),
-        ("", None),
-        ("30", None),
-        ("abc", None),
-        ("1d", None),
-        ("1.2.3h", None),
-        ("99999999h", None),
-    ] {
-        assert_eq!(parse_go_duration(s), want, "{s:?}");
-    }
 }
