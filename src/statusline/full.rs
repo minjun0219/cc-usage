@@ -311,19 +311,14 @@ fn credit_line(v: &View, s: &Style) -> String {
         return s.c(YELLOW, "한도 소진 · 크레딧 조회 중…");
     }
     let cur = v.currency;
-    let mut t = match cv.limit.filter(|l| *l > 0.0) {
+    match cv.limit.filter(|l| *l > 0.0) {
         Some(limit) => {
             let tone = s.credit_tone(cv.used / limit * 100.0, v.credit_glow);
             s.c(&tone, &money(cur, limit - cv.used))
                 + &s.c(DIM, &format!(" ({})", money_short(cur, limit)))
         }
         None => s.c(DIM, &money(cur, cv.used)) + &s.c(DIM, " 사용"),
-    };
-    // 쓰는 중이면 문구를 달지 않는다 — 줄이 따로 내려가는 것이 신호다. 소진 직후 아직 쓰기 전에만 안내한다.
-    if !cv.spending && v.limits.exhausted() {
-        t += &s.c(YELLOW, " · 다음 prompt부터 크레딧 사용");
     }
-    t
 }
 
 /// 금액 — 매 렌더 바뀌는 값이라 소수점을 늘 둔다(폭이 흔들리지 않게).
