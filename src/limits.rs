@@ -429,6 +429,10 @@ pub struct AccountCache {
     /// 이메일을 읽은 계정 파일 경로 — 다른 자리의 캐시면 쓰지 않는다.
     pub source: String,
     pub email: String,
+    /// 계정 파일의 `oauthAccount.billingType` — API 과금 판정(`claude_account::is_api_billing`)에 쓴다. 읽었는데 없으면
+    /// `Some("")`, `None` 은 이 필드를 적기 전의 캐시다(그래서 한 번 다시 읽는다 — `need_account_check`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub billing_type: Option<String>,
     /// 읽었을 때의 한도 지문(`Limits::key`).
     pub at: String,
     #[serde(with = "go_time", skip_serializing_if = "Option::is_none")]
@@ -649,7 +653,7 @@ fn used_credits(usage: Option<&CachedUsage>) -> Option<f64> {
 }
 
 /// 계정 파일을 다시 읽어야 하나 — 다른 자리의 캐시거나, 한도 숫자가 바뀌었거나(전환 직후 한도가 다른 계정 것으로
-/// 바뀐다), 1분이 지났으면.
+/// 바뀐다), 1분이 지났거나, 과금 방식을 적기 전의 캐시면.
 pub fn need_account_check(
     source: &str,
     lim: &Limits,
@@ -658,12 +662,19 @@ pub fn need_account_check(
 ) -> bool {
     account.source != source
         || account.at != lim.key()
+        || account.billing_type.is_none()
         || account.checked_at.is_none_or(|t| now - t >= ACCOUNT_TTL)
 }
 
 /// 캐시된 이메일 — **이 자리의 계정 파일에서 읽은 것일 때만**.
 pub fn account_cached<'a>(source: &str, account: &'a AccountCache) -> Option<&'a str> {
     (account.source == source).then_some(account.email.as_str())
+}
+
+/// 캐시가 이 자리의 계정을 API 과금이라고 하나 — **이 자리의 계정 파일에서 읽은 것일 때만**.
+pub fn api_billing_cached(source: &str, account: &AccountCache) -> bool {
+    account.source == source
+        && crate::claude_account::is_api_billing(account.billing_type.as_deref())
 }
 
 /// 경보 단계.

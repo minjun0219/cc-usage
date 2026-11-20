@@ -8,7 +8,8 @@
 ///
 /// `source` 는 이번 실행에서만 설정의 `source` 를 바꾼다(`--source`, 환경 변수 `profile::get().source_env` 보다 이긴다).
 /// 모르는 값이면 무엇이 틀렸는지 한 줄만 낸다 — statusline 은 비지 않는다. `none` 이거나 Antigravity(`agy`)가 부른
-/// 것이면 Claude 쪽(토큰·API·캐시·계정 파일)을 건드리지 않는다(`limits::local_limits`).
+/// 것이면 Claude 쪽(토큰·API·캐시·계정 파일)을 건드리지 않는다(`limits::local_limits`). 세션 계정이 API 과금이면 계정
+/// 파일만 읽고 한도는 `none` 처럼 뺀다(`statusline_cache::observe`).
 ///
 /// 다른 statusline 의 `extraCommands` 로 불렸으면(`bounded::nested_env()`) 아무것도 그리지 않는다 — 자기를 끝없이 다시 띄운다.
 pub fn cmd_statusline(source: Option<&str>, mut cfg: crate::config::StatuslineConfig) {
@@ -53,7 +54,11 @@ pub fn cmd_statusline(source: Option<&str>, mut cfg: crate::config::StatuslineCo
             || observed.as_ref().map(|o| o.limits).unwrap_or_default(),
             |(lim, _)| lim,
         );
-        let cache = observed.as_ref().map(|o| &o.usage);
+        // API 과금 세션은 `none` 처럼 — usage 캐시가 없어야 상태 문구("usage …"·실패 이유)도 크레딧도 나오지 않는다.
+        let cache = observed
+            .as_ref()
+            .filter(|o| !o.api_billing)
+            .map(|o| &o.usage);
         let badge = observed
             .as_ref()
             .and_then(|o| o.email.as_deref())

@@ -1,7 +1,8 @@
 //! `cc-usage probe` · `doctor` — 한도 줄이 왜 안 나오는지, extra 줄이 왜 안 붙는지를 사람이 보는 명령. cc-usage `probe` ·
 //! `doctor` 의 이식. statusline 은 실패를 조용히 삼키므로 "왜" 는 여기서만 보인다.
 //!
-//! 진단은 실제 동작과 **같은 함수**로 계산한다 — 계정·토큰 자리(`Slot`·`find_token`), extra 실행(`bounded::run_extra`).
+//! 진단은 실제 동작과 **같은 함수**로 계산한다 — 계정·토큰 자리(`Slot`·`find_token`), 과금 판정
+//! (`claude_account::is_api_billing`), extra 실행(`bounded::run_extra`).
 //! 따로 계산하면 둘이 어긋났을 때 화면이 실제 동작과 다른 말을 한다.
 
 use std::path::{Path, PathBuf};
@@ -48,10 +49,10 @@ pub fn doctor(
     let slot = Slot::from_env(cfg.config_dir.as_deref());
     let home = std::env::var("HOME").unwrap_or_default();
     let home = Path::new(&home);
-    let (state, usage, account) = match &slot {
+    let (state, usage, account, api_billing) = match &slot {
         Some(slot) => {
             println!("config_dir:    {}", slot.config_dir.display());
-            let (account, bucket) = account_bucket(slot);
+            let (account, billing, bucket) = account_bucket(slot);
             match (&account, slot.account_paths.first()) {
                 (Some(a), _) if !a.email.is_empty() => println!("계정:          {}", a.email),
                 (Some(_), _) => println!("계정:          (이메일 없음 — API 키 인증 등)"),
@@ -63,6 +64,7 @@ pub fn doctor(
                 }
                 (None, None) => println!("계정:          (계정 파일 후보 없음)"),
             }
+            println!("과금:          {}", billing.describe());
             let settings_dir = claude_account::config_dir(None, cfg.config_dir.as_deref(), home);
             let env_dir = std::env::var("CLAUDE_CONFIG_DIR").ok();
             println!(
@@ -88,11 +90,11 @@ pub fn doctor(
             println!("cache dir:     {}", bucket.display());
             let state: StateFile = read(&state_file(&bucket));
             let usage: UsageCache = read(&usage_file(&bucket));
-            (state, usage, account)
+            (state, usage, account, billing.is_api())
         }
         None => {
             println!("config_dir:    (HOME 을 몰라 계정·캐시를 정할 수 없다)");
-            (StateFile::default(), UsageCache::default(), None)
+            (StateFile::default(), UsageCache::default(), None, false)
         }
     };
 
@@ -105,6 +107,8 @@ pub fn doctor(
         ".claude.json"
     };
     match credits_enabled(&usage, hint) {
+        // API 과금 세션은 statusline 이 크레딧을 그리지 않는다 — 켜짐·꺼짐을 말하면 그리는 것처럼 읽힌다.
+        _ if api_billing => println!("크레딧:        해당 없음 (API 과금 세션)"),
         None => println!("크레딧:        모름 (-)"), // 어느 쪽도 답을 내지 못했다
         Some(true) => println!("크레딧:        켜짐 ({from})"),
         Some(false) => println!("크레딧:        꺼짐 ({from})"),
@@ -115,6 +119,8 @@ pub fn doctor(
     );
 
     match &slot {
+        // statusline 과 refresh 가 찾지 않는 토큰을 doctor 도 찾지 않는다 — 없다는 오류가 고칠 문제처럼 보인다.
+        Some(_) if api_billing => println!("token:         (API 과금 세션 — 찾지 않았다)"),
         Some(slot) => match find_token(cfg, slot, now) {
             Ok(found) => {
                 let expires = found.token.expires_at.map_or_else(
@@ -147,18 +153,68 @@ pub fn doctor(
     Ok(())
 }
 
-/// 계정과 그 캐시 폴더 — 계정 파일을 직접 읽고, 못 읽으면 statusline 이 남긴 계정 캐시의 이메일로.
-fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, PathBuf) {
-    let account = slot.read_account();
-    let email = match &account {
-        Some(a) => Some(a.email.clone()),
+/// 계정·과금 방식과 그 캐시 폴더 — 계정 파일을 직접 읽고, 못 읽으면 statusline 이 남긴 계정 캐시로.
+fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Billing, PathBuf) {
+    let (account, email, billing) = match slot.read_account_at() {
+        Some((path, a)) => {
+            let billing = Billing::Read {
+                value: a.billing_type.clone(),
+                from: path.display().to_string(),
+            };
+            let email = Some(a.email.clone());
+            (Some(a), email, billing)
+        }
         None => {
             let cached: AccountCache = read(&slot.account_file());
-            account_cached(&slot.account_source(), &cached).map(str::to_owned)
+            let source = slot.account_source();
+            let email = account_cached(&source, &cached).map(str::to_owned);
+            // 과금 방식을 적기 전의 캐시(`None`)면 모른다.
+            let billing = match cached.billing_type.filter(|_| cached.source == source) {
+                Some(value) => Billing::Read {
+                    value: Some(value).filter(|v| !v.is_empty()),
+                    from: format!("계정 캐시 {}", slot.account_file().display()),
+                },
+                None => Billing::Unknown,
+            };
+            (None, email, billing)
         }
     };
     let bucket = slot.bucket(email.as_deref());
-    (account, bucket)
+    (account, billing, bucket)
+}
+
+/// doctor 가 보이는 과금 방식 판정 — 값과 그것을 읽은 자리.
+enum Billing {
+    /// `billingType`(없으면 `None`)을 `from` 에서 읽었다.
+    Read { value: Option<String>, from: String },
+    /// 계정 파일도 계정 캐시도 답하지 못했다.
+    Unknown,
+}
+
+impl Billing {
+    fn is_api(&self) -> bool {
+        matches!(self, Billing::Read { value, .. } if claude_account::is_api_billing(value.as_deref()))
+    }
+
+    /// 판정과 근거 한 줄. API 과금이 아니면 "구독으로 본다" — 허용 목록 밖은 모두 지금처럼 한도를 다룬다.
+    fn describe(&self) -> String {
+        match self {
+            Billing::Read { value, from } if self.is_api() => format!(
+                "API 과금 세션 — 한도 표시 없음 (billingType {:?} · {from})",
+                value.as_deref().unwrap_or_default()
+            ),
+            Billing::Read {
+                value: Some(value),
+                from,
+            } => format!("구독으로 본다 (billingType {value:?} · {from})"),
+            Billing::Read { value: None, from } => {
+                format!("구독으로 본다 (billingType 없음 · {from})")
+            }
+            Billing::Unknown => {
+                "모름 — 구독으로 본다 (계정 파일도 계정 캐시도 답하지 않았다)".into()
+            }
+        }
+    }
 }
 
 /// extra 명령을 statusline 과 같은 경로로 돌려 무슨 일이 났는지 말한다.

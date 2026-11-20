@@ -63,9 +63,14 @@ impl Slot {
 
     /// 계정 파일 — 후보를 차례로 보고 처음 **읽힌** 파일. 아무것도 못 읽으면 `None`.
     pub fn read_account(&self) -> Option<claude_account::AccountFile> {
+        self.read_account_at().map(|(_, account)| account)
+    }
+
+    /// `read_account` 와 같고 읽힌 파일의 경로를 함께 — `doctor` 가 근거로 보인다.
+    pub fn read_account_at(&self) -> Option<(PathBuf, claude_account::AccountFile)> {
         self.account_paths.iter().find_map(|p| {
             let raw = std::fs::read_to_string(p).ok()?;
-            claude_account::parse_account_file(&raw)
+            claude_account::parse_account_file(&raw).map(|a| (p.clone(), a))
         })
     }
 }
@@ -125,6 +130,24 @@ pub struct Observed {
     pub credits: crate::limits::CreditView,
     /// 크레딧 금액 색의 진하기(`limits::credit_glow`).
     pub credit_glow: Option<f64>,
+    /// 이 세션의 계정이 API 과금이다(`claude_account::is_api_billing`) — 한도·상태 문구·크레딧 없이 `none` 처럼 그린다.
+    /// 이때 `limits`·`usage`·`alert`·`credits` 는 빈 값이고 계정 배지(`email`)만 남는다.
+    pub api_billing: bool,
+}
+
+impl Observed {
+    /// API 과금 세션의 판정 — 한도 없이 계정만.
+    fn api_billing(email: Option<String>) -> Observed {
+        Observed {
+            limits: crate::limits::Limits::default(),
+            usage: crate::limits::UsageCache::default(),
+            alert: crate::limits::Alert::default(),
+            email,
+            credits: crate::limits::CreditView::default(),
+            credit_glow: None,
+            api_billing: true,
+        }
+    }
 }
 
 /// 이 렌더의 한도·usage 캐시·경보·계정 — `None` 이면 한도를 다루지 않는다(`source: none`, 캐시를 읽지도 쓰지도 않는다).
@@ -133,15 +156,21 @@ pub struct Observed {
 /// 때만 다시 읽고, 이메일이 바뀌었으면(같은 폴더 안의 전환 — claude-swap · `/login`) 그 계정의 캐시로 갈아탄다.
 /// 못 읽으면 계정 캐시를 덮지 않는다. stdin 에 한도가 있으면 그 관측을 `state.json` 에 남긴다(6시간 폴백·`auto` 판단).
 /// usage API 응답이 필요하면(`need_refresh`) `cc-usage refresh` 를 detached 로 띄운다.
+///
+/// 계정이 API 과금이면(`claude_account::is_api_billing`) `source` 와 무관하게 `none` 처럼 — 그 계정의 `state.json`·
+/// `usage.json` 을 읽지도 쓰지도 않고 갱신도 띄우지 않는다(`Observed::api_billing`). 계정 캐시(`account.json`)만 지금처럼
+/// 읽고 고친다 — 과금 방식이 바뀌는 것(`/login` 으로 구독 계정에 들어감)도 같은 주기로 알아챈다.
 pub fn observe(
     cfg: &crate::limits::LimitsConfig,
     configured_dir: Option<&str>,
     input: &crate::limits::Input,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Option<Observed> {
+    use crate::claude_account::is_api_billing;
     use crate::limits::{
-        account_cached, alert, alerts, credit_glow, credits, need_account_check, need_refresh,
-        select, use_stdin, AccountCache, Source, StateFile, UsageCache,
+        account_cached, alert, alerts, api_billing_cached, credit_glow, credits,
+        need_account_check, need_refresh, select, use_stdin, AccountCache, Limits, Source,
+        StateFile, UsageCache,
     };
 
     if cfg.source == Source::None {
@@ -165,6 +194,7 @@ pub fn observe(
             email: None,
             credits: cv,
             credit_glow,
+            api_billing: false,
         });
     };
     let load = |email: Option<&str>| {
@@ -177,24 +207,42 @@ pub fn observe(
     let source = slot.account_source();
     let account: AccountCache = read(&slot.account_file());
     let mut email = account_cached(&source, &account).map(str::to_owned);
-    let (mut bucket, mut state, mut usage) = load(email.as_deref());
-    let mut lim = select(cfg, input, &state, &usage, now)?;
+    // API 과금 계정이면 그 계정의 캐시를 읽지 않는다 — 한도는 빈 값이고, 그 지문(`-/-`)이 계정 캐시의 `at` 과 맞물린다.
+    let mut api_billing = api_billing_cached(&source, &account);
+    let (mut bucket, mut state, mut usage) = if api_billing {
+        Default::default()
+    } else {
+        load(email.as_deref())
+    };
+    let mut lim = if api_billing {
+        Limits::default()
+    } else {
+        select(cfg, input, &state, &usage, now)?
+    };
 
     if need_account_check(&source, &lim, &account, now) {
-        if let Some(current) = slot.read_email() {
-            if email.as_deref() != Some(current.as_str()) {
-                (bucket, state, usage) = load(Some(&current));
+        if let Some(current) = slot.read_account() {
+            let now_api = is_api_billing(current.billing_type.as_deref());
+            if now_api {
+                lim = Limits::default();
+            } else if api_billing || email.as_deref() != Some(current.email.as_str()) {
+                (bucket, state, usage) = load(Some(&current.email));
                 lim = select(cfg, input, &state, &usage, now)?;
             }
-            email = Some(current.clone());
+            api_billing = now_api;
+            email = Some(current.email.clone());
             let updated = AccountCache {
                 source,
-                email: current,
+                email: current.email,
+                billing_type: Some(current.billing_type.unwrap_or_default()),
                 at: lim.key(),
                 checked_at: Some(now),
             };
             let _ = write(&slot.account_file(), &updated);
         }
+    }
+    if api_billing {
+        return Some(Observed::api_billing(email));
     }
 
     let stdin_present = input.five_hour.is_some() || input.seven_day.is_some();
@@ -229,5 +277,6 @@ pub fn observe(
         email,
         credits: cv,
         credit_glow,
+        api_billing: false,
     })
 }

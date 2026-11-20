@@ -281,6 +281,25 @@ fn refresh_leaves_source_none_alone() {
     assert!(!home.bucket(Some(EMAIL)).join("usage.json").exists());
 }
 
+/// API 과금 계정(`billingType: "prepaid"`)에는 구독 한도가 없다 — 토큰이 있어도 부르지 않고 아무것도 쓰지 않는다. statusline 은
+/// 애초에 띄우지 않지만, 계정 캐시가 뒤처진 사이에 띄운 갱신이나 손으로 부른 것도 여기서 멈춘다.
+#[test]
+fn refresh_leaves_an_api_billing_account_alone() {
+    let api = FakeApi::start("200 OK", "", OK_BODY);
+    let home = Home::new(
+        Some(EMAIL),
+        serde_json::json!({"source": "api", "tokenEnv": "CC_USAGE_TEST_TOKEN"}),
+    );
+    std::fs::write(
+        home.account_file(),
+        format!(r#"{{"oauthAccount":{{"emailAddress":"{EMAIL}","billingType":"prepaid"}}}}"#),
+    )
+    .unwrap();
+    home.refresh(&api.url, &TOKEN_ENV);
+    assert!(api.requests.lock().unwrap().is_empty());
+    assert!(!home.bucket(Some(EMAIL)).exists());
+}
+
 /// `--full` 은 응답이 필요하면 갱신을 detached 로 띄우고 바로 끝난다 — 다음 렌더가 그 결과를 그린다.
 #[test]
 fn full_spawns_a_detached_refresh_and_the_next_render_draws_it() {
@@ -497,6 +516,9 @@ fn doctor_reports_what_statusline_would_do() {
         "source:        api".to_string(),
         format!("config_dir:    {home_dir}/.claude"),
         format!("계정:          {EMAIL}"),
+        format!(
+            "과금:          구독으로 본다 (billingType 없음 · {home_dir}/.claude/.claude.json)"
+        ),
         "keychain:      cc-usage-test-absent".to_string(),
         format!("creds file:    {home_dir}/.claude/.credentials.json"),
         format!("cache dir:     {}", home.bucket(Some(EMAIL)).display()),
@@ -601,4 +623,71 @@ fn doctor_falls_back_to_the_cached_account_bucket() {
 
     let (_, out, _) = home.run("http://127.0.0.1:1/usage", &[("HOME", "")], &["doctor"]);
     assert!(out.contains("크레딧:        모름 (-)\n"), "{out}");
+}
+
+/// API 과금 세션 — doctor 는 판정과 근거(값·읽은 파일)를 보이고, statusline 처럼 토큰을 찾지 않는다. 구독 값이면 그 값을
+/// 근거로 "구독으로 본다". 계정 파일을 못 읽으면 statusline 이 남긴 계정 캐시를 근거로 보인다.
+#[test]
+fn doctor_tells_an_api_billing_session_and_why() {
+    let home = Home::new(Some(EMAIL), serde_json::json!({"source": "api"}));
+    let logan = home.path.join(".claude-logan");
+    std::fs::create_dir_all(&logan).unwrap();
+    let account = logan.join(".claude.json");
+    std::fs::write(
+        &account,
+        format!(
+            r#"{{"oauthAccount":{{"emailAddress":"{EMAIL}","billingType":"prepaid","hasExtraUsageEnabled":false}}}}"#
+        ),
+    )
+    .unwrap();
+    let env = [("CLAUDE_CONFIG_DIR", logan.to_str().unwrap())];
+    let (code, out, err) = home.run("http://127.0.0.1:1/usage", &env, &["doctor"]);
+    assert_eq!(code, 0, "{err}");
+    for want in [
+        format!(
+            "과금:          API 과금 세션 — 한도 표시 없음 (billingType \"prepaid\" · {})\n",
+            account.display()
+        ),
+        "크레딧:        해당 없음 (API 과금 세션)\n".to_string(),
+        "token:         (API 과금 세션 — 찾지 않았다)\n".to_string(),
+    ] {
+        assert!(out.contains(&want), "{want:?} 가 없다:\n{out}");
+    }
+    assert!(!out.contains("token not found"), "{out}");
+
+    // 계정 파일이 깨져 있으면 statusline 이 남긴 계정 캐시를 근거로.
+    let slot = cc_usage::claude_account::cache_slot(&home.path.join(".cache"), &logan);
+    std::fs::create_dir_all(&slot).unwrap();
+    std::fs::write(
+        slot.join("account.json"),
+        serde_json::json!({"source": account, "email": EMAIL, "billing_type": "prepaid", "at": "-/-", "checked_at": NOW}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(&account, "{ half-written").unwrap();
+    let (_, out, _) = home.run("http://127.0.0.1:1/usage", &env, &["doctor"]);
+    assert!(
+        out.contains(&format!(
+            "과금:          API 과금 세션 — 한도 표시 없음 (billingType \"prepaid\" · 계정 캐시 {})",
+            slot.join("account.json").display()
+        )),
+        "{out}"
+    );
+
+    // 구독 값이면 그 값을 근거로 구독으로 보고, 토큰을 찾는다(여기서는 없어서 이유가 나온다).
+    std::fs::write(
+        &account,
+        format!(
+            r#"{{"oauthAccount":{{"emailAddress":"{EMAIL}","billingType":"stripe_subscription"}}}}"#
+        ),
+    )
+    .unwrap();
+    let (_, out, _) = home.run("http://127.0.0.1:1/usage", &env, &["doctor"]);
+    assert!(
+        out.contains(&format!(
+            "과금:          구독으로 본다 (billingType \"stripe_subscription\" · {})\n",
+            account.display()
+        )),
+        "{out}"
+    );
+    assert!(out.contains("token:         token not found ("), "{out}");
 }

@@ -15,7 +15,7 @@
         "api",
         "none"
       ],
-      "description": "한도를 어디서 읽나. stdin = statusline 입력의 rate_limits(Pro/Max) — 한도가 소진되면 크레딧을 보려고 usage API 도 부른다, api = usage API(statusline 이 갱신 프로세스를 detached 로 띄우고 결과는 다음 렌더에 나온다), auto = 최근 6시간 안에 stdin 한도를 봤으면 stdin, 아니면 api, none = 한도를 다루지 않음. 기본 auto."
+      "description": "한도를 어디서 읽나. stdin = statusline 입력의 rate_limits(Pro/Max) — 한도가 소진되면 크레딧을 보려고 usage API 도 부른다, api = usage API(statusline 이 갱신 프로세스를 detached 로 띄우고 결과는 다음 렌더에 나온다), auto = 최근 6시간 안에 stdin 한도를 봤으면 stdin, 아니면 api, none = 한도를 다루지 않음. 기본 auto. 세션 계정이 API 과금이면(.claude.json 의 oauthAccount.billingType 이 prepaid) 이 값과 무관하게 none 처럼 동작한다."
     },
     "alertPercent": {
       "type": "number",

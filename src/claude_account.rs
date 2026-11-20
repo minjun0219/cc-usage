@@ -66,6 +66,28 @@ pub struct AccountFile {
     /// 크레딧(extra usage)이 켜져 있나 — 필드가 없으면 `None`(모름). `doctor` 가 usage 응답이 없는 구간을 이것으로 메운다.
     /// "필드 없음" 과 `false` 를 가른다 — 같게 다루면 이 필드를 쓰지 않는 설치에서 크레딧이 켜져 있어도 꺼진 것으로 단정한다.
     pub extra_usage_enabled: Option<bool>,
+    /// `oauthAccount.billingType` — 없거나 문자열이 아니면 `None`(모름). API 과금 판정(`is_api_billing`)에만 쓴다.
+    pub billing_type: Option<String>,
+}
+
+/// API 과금으로 보는 `billingType` 값 — **실측한 값만** 넣는다. 지금은 `prepaid` 하나다(2026-11-20, Console 로그인 설정
+/// 폴더의 `.claude.json`). Claude Code 2.1.329 바이너리에는 이 값이 나오지 않는다 — 서버가 주는 Console 조직의 값이다.
+///
+/// 구독 쪽을 나열해 "그 밖은 API 과금" 으로 보지 않는다. 구독 계정에도 `billingType` 이 없을 수 있고(Claude Code 는 프로필의
+/// `billing_type` 이 null 이면 기존 값을 두거나 비운다), 모르는 값이 새로 생길 수 있다 — 그것을 API 과금으로 단정하면 구독
+/// 세션의 한도가 경고 없이 사라진다. 그래서 허용 목록이다: 여기 없는 값은 모두 지금처럼 한도를 그린다. 같은 바이너리에서
+/// 확인한 구독 값(크레딧 구매가 되는 집합): `stripe_subscription` · `stripe_subscription_contracted` ·
+/// `stripe_subscription_enterprise_self_serve` · `aws_marketplace` · `c4e_consumption_trial` · `apple_subscription` ·
+/// `google_play_subscription`. `usage_based` 는 Enterprise 사용량 과금 좌석이다(구독 OAuth 와 함께 쓰인다).
+pub const API_BILLING_TYPES: &[&str] = &["prepaid"];
+
+/// 이 계정이 API 과금인가 — `billingType` 이 `API_BILLING_TYPES` 에 있을 때만. 없거나 모르는 값이면 아니다.
+///
+/// API 과금 세션에는 5h/7d 구독 한도가 없다 — 보여 줄 값이 없으니 경고가 아니라 "해당 없음" 이다. 토큰(`claudeAiOauth`)이
+/// 없다는 것만으로는 가르지 않는다 — 구독 세션에서 토큰을 못 읽는 경우(keychain 잠김·이름 어긋남)와 구분되지 않고, 그 경고는
+/// 남겨야 한다. 읽으려면 statusline 경로에서 keychain 을 불러야 하는 것도 걸린다.
+pub fn is_api_billing(billing_type: Option<&str>) -> bool {
+    billing_type.is_some_and(|t| API_BILLING_TYPES.contains(&t))
 }
 
 /// 계정 파일 내용 → 이메일·크레딧 힌트. `None` 은 **읽지 못했다**(JSON 이 아니거나 필드 타입이 틀림).
@@ -90,9 +112,16 @@ pub fn parse_account_file(raw: &str) -> Option<AccountFile> {
         Some(Value::String(email)) => email.clone(),
         Some(_) => return None,
     };
+    // 새로 읽는 필드라 타입이 틀려도 파일 전체를 버리지 않는다 — 모르는 값으로 두면 지금처럼 한도를 그린다(이메일·배지까지
+    // 잃을 이유가 없다).
+    let billing_type = account
+        .get("billingType")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     Some(AccountFile {
         email,
         extra_usage_enabled,
+        billing_type,
     })
 }
 

@@ -62,6 +62,7 @@ cc-usage version
 | Pro / Max (개인) | `stdin` |
 | 모르겠다 | 사용자에게 묻는다. 묻기 어려우면 생략(`auto`) |
 | 한도 표시가 필요 없다 | `none`: token·API·cache를 아예 보지 않는다 |
+| API 과금(Console 로그인) 설정 폴더 | 따로 적지 않는다. `billingType`이 `prepaid`면 `source`와 무관하게 `none`처럼 동작한다 |
 
 ```json
 {
@@ -129,7 +130,7 @@ echo '{"model":{"display_name":"Opus"},"workspace":{"current_dir":"'"$PWD"'"},"c
 | 증상 | 볼 것 |
 | --- | --- |
 | statusline이 비어 있다 | `cc-usage doctor`, settings.json의 command 경로 |
-| 5h/7d가 나오지 않는다 | `source`가 계정에 맞는지(3번 표), `doctor`의 `token:` 줄 |
+| 5h/7d가 나오지 않는다 | `doctor`의 `과금:` 줄(API 과금 세션이면 정상), `source`가 계정에 맞는지(3번 표), `token:` 줄 |
 | 다른 계정의 숫자처럼 보인다 | `cc-usage doctor` 의 `계정:`·`keychain:`·`cache dir:` 줄이 같은 계정을 가리키는지 |
 | `extraCommands` 줄이 붙지 않는다 | `cc-usage doctor`의 항목별 결과 |
 | `cc-usage update`가 거부한다 | 출력 이유 그대로다(소스 없음 · 커밋하지 않은 변경 · 갈라짐 · 테스트 실패). 억지로 넘기지 않는다 |

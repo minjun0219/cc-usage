@@ -782,3 +782,164 @@ fn statusline_inside_extra_commands_does_not_recurse() {
     let out = statusline_once(home.path(), &["statusline"], &[], &config, stdin);
     assert_eq!(out, "/tmp\nOpus 5\nEXTRA\n");
 }
+
+/// 구독 로그인 없이 API 과금으로 도는 세션(재현: `CLAUDE_CONFIG_DIR=~/.claude-logan`, 그 폴더 `.claude.json` 의
+/// `oauthAccount.billingType` 이 `"prepaid"`, keychain 에는 `mcpOAuth` 뿐, `.credentials.json` 없음). 5h/7d 구독 한도가 없으니
+/// `source` 가 api·auto 여도 한도를 경고 없이 빼고 `none` 처럼 그린다 — 고치기 전에 남은 실패 기록(`token not found`)도
+/// 그리지 않고, 그 계정의 캐시를 읽지도 쓰지도 않으며 갱신(토큰 조회·usage API)도 띄우지 않는다. 계정 배지는 남는다.
+#[test]
+fn full_draws_no_limits_for_an_api_billing_session() {
+    for source in ["api", "auto"] {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let logan = home.join(".claude-logan");
+        std::fs::create_dir_all(&logan).unwrap();
+        std::fs::write(
+            logan.join(".claude.json"),
+            r#"{"oauthAccount":{"emailAddress":"api@example.com","billingType":"prepaid"}}"#,
+        )
+        .unwrap();
+        let bucket =
+            cc_usage::claude_account::cache_bucket(&slot(home, &logan), Some("api@example.com"));
+        std::fs::create_dir_all(&bucket).unwrap();
+        let stale = r#"{"last_attempt":"2026-09-16T07:00:00Z","last_error":"token not found (keychain: service \"Claude Code-credentials-ea5e01c3\": claudeAiOauth.accessToken missing)","failures":3}"#;
+        std::fs::write(bucket.join("usage.json"), stale).unwrap();
+        let config = format!(
+            r#"{{"source":"{source}","keychainService":"cc-usage-test-absent","badges":{{"api@example.com":{{"glyph":"◆"}}}}}}"#
+        );
+        let env = [
+            ("CC_USAGE_NOW", NOW),
+            ("CLAUDE_CONFIG_DIR", logan.to_str().unwrap()),
+        ];
+        let stdin = r#"{"model":{"display_name":"M"},"context_window":{"used_percentage":12}}"#;
+        assert_eq!(
+            full_once(home, &env, &config, stdin),
+            "◆ M · ctx 12%\n",
+            "{source}"
+        );
+        // 갱신을 띄웠다면 잠시 뒤 refresh.lock·usage.json 이 바뀐다 — 기다렸다 본다.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(
+            std::fs::read_to_string(bucket.join("usage.json")).unwrap(),
+            stale,
+            "{source}"
+        );
+        // 계정 캐시(account.json)만 고치고, 그 계정의 state.json·refresh.lock 은 만들지 않는다.
+        let slot_dir = slot(home, &logan);
+        let bucket_name = bucket.file_name().unwrap().to_str().unwrap();
+        assert_eq!(
+            tree(&slot_dir),
+            [
+                "account.json".to_string(),
+                format!("{bucket_name}/usage.json")
+            ],
+            "{source}"
+        );
+        let account: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(slot_dir.join("account.json")).unwrap())
+                .unwrap();
+        assert_eq!(account["billing_type"], "prepaid");
+        // 다음 렌더(계정 캐시만 보고 판정)도 같다.
+        let later = [
+            ("CC_USAGE_NOW", "2026-09-16T07:40:30Z"),
+            ("CLAUDE_CONFIG_DIR", logan.to_str().unwrap()),
+        ];
+        assert_eq!(
+            full_once(home, &later, &config, stdin),
+            "◆ M · ctx 12%\n",
+            "{source}"
+        );
+    }
+}
+
+/// 구독 세션에서 정말 토큰을 못 읽는 경우의 경고는 그대로 남는다 — `billingType` 이 구독 값이거나 없으면 API 과금으로 보지
+/// 않는다.
+#[test]
+fn full_still_warns_when_a_subscription_session_has_no_token() {
+    for account in [
+        r#"{"oauthAccount":{"emailAddress":"a@example.com","billingType":"stripe_subscription"}}"#,
+        r#"{"oauthAccount":{"emailAddress":"a@example.com"}}"#,
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        std::fs::write(home.join(".claude.json"), account).unwrap();
+        let bucket = cc_usage::claude_account::cache_bucket(
+            &slot(home, &home.join(".claude")),
+            Some("a@example.com"),
+        );
+        std::fs::create_dir_all(&bucket).unwrap();
+        std::fs::write(
+            bucket.join("usage.json"),
+            // backoff 중 — 이 렌더가 갱신을 다시 띄우지 않는다.
+            r#"{"last_attempt":"2026-09-16T07:39:00Z","last_error":"token not found (keychain: absent)","failures":1,"backoff_until":"2026-09-16T07:59:00Z"}"#,
+        )
+        .unwrap();
+        let out = full_once(
+            home,
+            &[("CC_USAGE_NOW", NOW)],
+            API_CONFIG,
+            r#"{"model":{"display_name":"M"}}"#,
+        );
+        assert_eq!(
+            out, "M · usage: token not found (keychain: absent)\n",
+            "{account}"
+        );
+    }
+}
+
+/// 같은 설정 폴더 안에서 과금 방식이 바뀌면(`/login` 으로 구독 계정 ↔ Console 계정) 계정 파일을 다시 읽는 주기(1분)에
+/// 맞춰 따라간다. 과금 방식을 적기 전의 계정 캐시(업데이트 직후)는 첫 렌더에서 다시 읽어 바로 조용해진다.
+#[test]
+fn full_follows_a_switch_between_subscription_and_api_billing() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let config_dir = home.join(".claude");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    let account = config_dir.join(".claude.json");
+    let set = |billing: &str| {
+        std::fs::write(
+            &account,
+            format!(
+                r#"{{"oauthAccount":{{"emailAddress":"a@example.com","billingType":"{billing}"}}}}"#
+            ),
+        )
+        .unwrap();
+    };
+    let slot = slot(home, &config_dir);
+    seed_usage(
+        &cc_usage::claude_account::cache_bucket(&slot, Some("a@example.com")),
+        42.0,
+    );
+    // 고치기 전의 계정 캐시 — billing_type 이 없고 방금(1분 안) 읽었다.
+    std::fs::create_dir_all(&slot).unwrap();
+    std::fs::write(
+        slot.join("account.json"),
+        serde_json::json!({"source": account, "email": "a@example.com", "at": "58/-", "checked_at": NOW}).to_string(),
+    )
+    .unwrap();
+    let stdin = r#"{"model":{"display_name":"M"}}"#;
+    let at = |t: &'static str| [("CC_USAGE_NOW", t)];
+
+    set("prepaid");
+    assert_eq!(
+        full_once(home, &at("2026-09-16T07:40:00Z"), API_CONFIG, stdin),
+        "M\n"
+    );
+    // 구독 계정으로 들어감 — 1분 안에는 아직 API 과금으로 본다.
+    set("stripe_subscription");
+    assert_eq!(
+        full_once(home, &at("2026-09-16T07:40:30Z"), API_CONFIG, stdin),
+        "M\n"
+    );
+    // 1분이 지나 다시 읽으면 그 계정의 한도를 그린다.
+    assert_eq!(
+        full_once(home, &at("2026-09-16T07:41:01Z"), API_CONFIG, stdin),
+        "M · 5h 58%\n"
+    );
+    // 다시 Console 계정으로 — 1분이 지나 다시 읽으면 조용해진다.
+    set("prepaid");
+    assert_eq!(
+        full_once(home, &at("2026-09-16T07:42:02Z"), API_CONFIG, stdin),
+        "M\n"
+    );
+}

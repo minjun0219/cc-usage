@@ -150,6 +150,23 @@ show "Team(api) — 한도 전에도 크레딧" \
 show "source none (agy) — cache 가 있어도 한도·크레딧 없음" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Gemini 2.5 Pro\"},\"context_window\":{\"used_percentage\":42.5},\"workspace\":{\"current_dir\":\"$CWD\"}}" \
  --source none
+# API 과금 세션 — 구독 로그인 없이 Console 로 도는 설정 폴더(billingType: prepaid). source 가 api 여도
+# 한도·상태 문구 없이 none 처럼 그린다. 고치기 전에 남은 실패 기록(token not found)이 있어도 새지 않아야 한다.
+API_BILLING="$API_DIR/claude-api"
+mkdir -p "$API_BILLING"
+cat > "$API_BILLING/.claude.json" <<'JSON'
+{"oauthAccount":{"emailAddress":"preview-api@example.com","billingType":"prepaid"}}
+JSON
+(
+	export CLAUDE_CONFIG_DIR="$API_BILLING"
+	CACHE=$(cache_dir)
+	mkdir -p "$CACHE"
+	cat > "$CACHE/usage.json" <<'JSON'
+{"last_error":"token not found (keychain: claudeAiOauth.accessToken missing)","failures":3}
+JSON
+	show "API 과금 세션 (billingType prepaid) — source api 여도 한도·경고 없음" \
+	 "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"}}"
+)
 # agy 호스트 — product: antigravity 면 source 와 무관하게 Claude 한도 경로를 타지 않고
 # stdin 의 quota 를 그린다. 위 cache 가 그대로 있는 상태라 섞이지 않는지도 같이 본다.
 # 버킷은 모델로 고른다(Gemini → gemini-*, 그 밖 → 3p-*).
