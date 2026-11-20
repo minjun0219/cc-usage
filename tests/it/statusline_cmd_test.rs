@@ -856,13 +856,20 @@ fn full_draws_no_limits_for_an_api_billing_session() {
 /// 않는다.
 #[test]
 fn full_still_warns_when_a_subscription_session_has_no_token() {
-    for account in [
-        r#"{"oauthAccount":{"emailAddress":"a@example.com","billingType":"stripe_subscription"}}"#,
-        r#"{"oauthAccount":{"emailAddress":"a@example.com"}}"#,
+    // 실패 메시지에는 케이스 이름만 — 계정 파일 내용을 찍지 않는다.
+    for (case, claude_json) in [
+        (
+            "stripe_subscription",
+            r#"{"oauthAccount":{"emailAddress":"a@example.com","billingType":"stripe_subscription"}}"#,
+        ),
+        (
+            "billingType 없음",
+            r#"{"oauthAccount":{"emailAddress":"a@example.com"}}"#,
+        ),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
-        std::fs::write(home.join(".claude.json"), account).unwrap();
+        std::fs::write(home.join(".claude.json"), claude_json).unwrap();
         let bucket = cc_usage::claude_account::cache_bucket(
             &slot(home, &home.join(".claude")),
             Some("a@example.com"),
@@ -882,7 +889,7 @@ fn full_still_warns_when_a_subscription_session_has_no_token() {
         );
         assert_eq!(
             out, "M · usage: token not found (keychain: absent)\n",
-            "{account}"
+            "{case}"
         );
     }
 }
