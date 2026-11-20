@@ -214,3 +214,49 @@ fn a_fresh_file_token_beats_an_expired_keychain_token() {
     assert!(file_beats_expired_keychain(&token(None), now));
     assert!(!file_beats_expired_keychain(&token(Some(1_999_000)), now));
 }
+
+/// 과금 방식 — `billingType` 을 그대로 옮기고, 없거나 문자열이 아니면 모름(`None`). 새 필드라 타입이 틀려도 이메일은
+/// 지킨다(파일 전체를 버리면 배지와 갱신까지 잃는다).
+#[test]
+fn account_file_carries_the_billing_type() {
+    let billing = |raw: &str| parse_account_file(raw).map(|a| (a.email, a.billing_type));
+    assert_eq!(
+        billing(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":"prepaid"}}"#),
+        Some(("a@x".into(), Some("prepaid".into())))
+    );
+    assert_eq!(
+        billing(r#"{"oauthAccount":{"emailAddress":"a@x"}}"#),
+        Some(("a@x".into(), None))
+    );
+    assert_eq!(
+        billing(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":null}}"#),
+        Some(("a@x".into(), None))
+    );
+    assert_eq!(
+        billing(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":7}}"#),
+        Some(("a@x".into(), None))
+    );
+}
+
+/// API 과금은 실측한 값(`prepaid`)일 때만이다 — 구독 값·Enterprise 사용량 과금·없음·모르는 값은 모두 아니다. 구독을 API
+/// 과금으로 잘못 보면 구독 세션의 한도가 경고 없이 사라진다.
+#[test]
+fn only_measured_billing_types_mean_api_billing() {
+    assert!(is_api_billing(Some("prepaid")));
+    // Claude Code 2.1.329 바이너리의 구독 집합(크레딧 구매가 되는 billingType)과 Enterprise 사용량 과금.
+    for subscription in [
+        "stripe_subscription",
+        "stripe_subscription_contracted",
+        "stripe_subscription_enterprise_self_serve",
+        "aws_marketplace",
+        "c4e_consumption_trial",
+        "apple_subscription",
+        "google_play_subscription",
+        "usage_based",
+    ] {
+        assert!(!is_api_billing(Some(subscription)), "{subscription}");
+    }
+    for unknown in [None, Some(""), Some("Prepaid"), Some("postpaid")] {
+        assert!(!is_api_billing(unknown), "{unknown:?}");
+    }
+}

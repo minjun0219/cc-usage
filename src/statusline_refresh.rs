@@ -4,7 +4,8 @@
 //! 환경(`CLAUDE_CONFIG_DIR` 등)을 그대로 물려받아 그 세션 계정의 토큰을 쓴다. 상주 프로세스로 두지 않는
 //! 이유가 이것이다(상주 프로세스는 세션 환경을 볼 수 없다). 같은 계정의 갱신은 lock 으로 한 번에 하나만 돈다.
 //!
-//! 토큰은 읽기만 한다(갱신하지 않는다): `tokenEnv` → keychain(기본 설정 폴더만) → `.credentials.json`.
+//! 토큰은 읽기만 한다(갱신하지 않는다): `tokenEnv` → keychain(기본 설정 폴더만) → `.credentials.json`. 계정이 API 과금이면
+//! (`claude_account::is_api_billing`) 토큰을 찾지도 않는다.
 
 use std::os::unix::process::CommandExt;
 use std::path::Path;
@@ -39,9 +40,15 @@ pub fn run(cfg: &StatuslineConfig, now: DateTime<Utc>) {
     }
     // 계정 파일을 직접 읽는다 — 토큰과 같은 계정의 캐시에 써야 한다. 못 읽으면(원자적 재작성 중 등) 이 계정이 누구인지
     // 모르는 것이라 쓰지 않는다 — `_` 에 쓰면 그 숫자가 나중에 다른 계정 줄에 나온다.
-    let Some(email) = slot.read_email() else {
+    let Some(account) = slot.read_account() else {
         return;
     };
+    // API 과금 계정에는 구독 한도가 없다 — 토큰도 찾지 않고 아무것도 쓰지 않는다(statusline 은 애초에 띄우지 않는다. 계정
+    // 캐시가 뒤처진 사이에 띄운 갱신이나 손으로 부른 것을 여기서 막는다).
+    if claude_account::is_api_billing(account.billing_type.as_deref()) {
+        return;
+    }
+    let email = account.email;
     let bucket = slot.bucket(Some(&email));
     let Some(_lock) = Lock::try_acquire(&bucket.join("refresh.lock")) else {
         return; // 다른 갱신이 도는 중

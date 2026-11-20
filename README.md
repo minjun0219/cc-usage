@@ -26,6 +26,11 @@ Sonnet high · ctx 40% · 7d 25% (2d 4h) · 5h 0% (↻18:00) · $38.40 ($50.00)
 | `api` (Team) | usage API | `pollSeconds` 주기 (기본 300초) |
 | `auto` | 최근 6시간 내 stdin에 `rate_limits`가 보였으면 stdin, 아니면 api | 위 규칙 |
 | `none` | 다루지 않음(경로·git·모델·ctx만 표시) | 호출하지 않음 (token·cache도 보지 않음) |
+| (API 과금 세션) | `source`와 무관하게 `none`처럼 다루지 않음 | 호출하지 않음 (token·usage cache도 보지 않음) |
+
+- **API 과금 세션에는 한도를 그리지 않습니다.** 구독 로그인 없이 API 과금(Console 계정)으로 도는 세션에는 5h/7d 구독 한도가 없습니다. 보여 줄 값이 없으니 경고 대신 "해당 없음"으로 다룹니다. `source`가 `api`·`auto`여도 token을 찾지 않고 usage API도 부르지 않으며 refresh도 띄우지 않습니다. 계정 배지는 그대로 붙습니다.
+
+  판정은 세션 설정 폴더의 `.claude.json`에 있는 `oauthAccount.billingType` 하나로 합니다. **API 과금으로 보는 값은 실측한 `prepaid`뿐입니다.** 값이 없거나 그 밖의 값이면 지금처럼 한도를 다룹니다. 그래서 구독 세션에서 token을 정말 못 읽으면 `usage: token not found …` 경고가 그대로 남습니다. 거꾸로 "구독 값이 아니면 API 과금"으로 보지 않는 이유는 구독 계정에도 이 필드가 비어 있을 수 있어서입니다. 그렇게 판정하면 구독 세션의 한도가 경고 없이 사라집니다. keychain에 `claudeAiOauth`가 없다는 신호도 쓰지 않습니다. 구독 세션에서 token을 못 읽는 경우와 구분되지 않고, statusline 경로에서 keychain을 불러야 하기 때문입니다. 계정 파일은 배지용으로 이미 다시 읽고 있어서(한도가 움직이거나 1분이 지나면) 이 판정 때문에 늘어나는 프로세스나 파일 읽기는 없습니다.
 
 - `cc-usage statusline`은 **network를 기다리지 않습니다.** usage API는 이 경로에서 호출하지 않고, 갱신이 필요하면 `cc-usage refresh`를 detached로 실행한 뒤 즉시 종료합니다. 로컬 subprocess(`git status`, `extraCommands`)는 타임아웃을 걸고 실행합니다. 느리거나 실패하면 그 세그먼트만 빠집니다. `extraCommands`에 network를 쓰는 명령을 넣는 것은 설정하는 쪽의 선택입니다. 그 지연은 타임아웃이 막습니다.
 - `refresh`는 lock으로 동시에 하나만 실행됩니다. 실패하면 backoff 간격을 1m부터 두 배씩 늘리고 30m에서 자릅니다. 429에는 `Retry-After`를 따릅니다.
@@ -99,7 +104,7 @@ keychain 항목 이름도 Claude Code 규칙(`CLAUDE_CONFIG_DIR`이 있으면 `C
 | 필드 | 기본값 | 설명 |
 | --- | --- | --- |
 | `configDir` | `~/.claude` | Claude Code 설정 폴더. 세션의 `CLAUDE_CONFIG_DIR`가 이깁니다 |
-| `source` | `auto` | `stdin` / `api` / `auto` / `none`. statusline에서는 `$CC_USAGE_SOURCE`와 `--source`가 우선합니다 |
+| `source` | `auto` | `stdin` / `api` / `auto` / `none`. statusline에서는 `$CC_USAGE_SOURCE`와 `--source`가 우선합니다. API 과금 세션은 이 값과 무관하게 `none`처럼 동작합니다 |
 | `keychainService` | `Claude Code-credentials` | macOS keychain 항목 이름. `configDir` 세션에만 씁니다 |
 | `credentialsFile` | `<configDir>/.credentials.json` | Linux 등 keychain이 없을 때 |
 | `tokenEnv` | – | 이 환경변수에 token이 있으면 우선 사용 |
@@ -210,6 +215,8 @@ cc-usage doctor
 
 `token:` 줄이 ok면 할 일이 없습니다. 못 읽으면 `keychain 후보` 목록에서 맞는 항목을 골라 `keychainService`에 넣으세요. 처음 접근 시 keychain 허용 창이 뜰 수 있습니다.
 
+`과금:` 줄이 판정과 근거를 보여 줍니다. `API 과금 세션 — 한도 표시 없음 (billingType "prepaid" · <읽은 .claude.json>)`이면 이 세션은 한도를 그리지 않습니다. 그때는 `token:` 줄도 `(API 과금 세션 — 찾지 않았다)`로 나오며 고칠 것이 없습니다. 그 밖에는 `구독으로 본다 (billingType "…" · <파일>)`처럼 읽은 값을 함께 보여 줍니다. 계정 파일을 못 읽으면 statusline이 남긴 계정 캐시를 근거로 씁니다.
+
 ### 3. 필드 검증 (처음 한 번)
 
 ```bash
@@ -250,7 +257,7 @@ cc-usage version
 - `cc-usage --help`: 명령 목록 + 설정 파일 경로 + `extraCommands` 사용법
 - `cc-usage <명령> --help`: 명령별 도움말 (지금은 `statusline`만 따로 있고 나머지는 전체 도움말)
 - `cc-usage config`: 설정 파일 경로와 전체 필드 (이 README의 필드 표와 같은 내용)
-- `cc-usage doctor`: 설정·계정·token·cache·keychain과 `extraCommands` 항목별 실행 결과
+- `cc-usage doctor`: 설정·계정·과금 판정(API 과금 세션인지와 그 근거)·token·cache·keychain과 `extraCommands` 항목별 실행 결과
 
 statusline은 stdout이 pipe라 `tput`·ioctl로 터미널 폭을 알 수 없습니다. Claude Code가 `COLUMNS`·`LINES`를 넣어 주므로 그 값을 읽습니다. 표시 폭은 ANSI를 제거하고 한글·이모지를 2칸으로 세어 계산합니다. wcwidth 크레이트 없이 필요한 구간만 담은 근사입니다(`src/statusline/width.rs`).
 

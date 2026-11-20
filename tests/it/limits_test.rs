@@ -2,9 +2,9 @@
 //! `internal/git` 테스트에서 옮긴 케이스다. 렌더까지 포함한 바이트 대조는 `statusline_golden_test`.
 
 use cc_usage::limits::{
-    account_cached, alert, apply_failure, apply_fetch, need_account_check, need_refresh,
-    poll_interval, select, AccountCache, AlertLevel, CachedUsage, ExtraUsage, Input, Limits,
-    LimitsConfig, Source, StateFile, UsageCache, Window,
+    account_cached, alert, api_billing_cached, apply_failure, apply_fetch, need_account_check,
+    need_refresh, poll_interval, select, AccountCache, AlertLevel, CachedUsage, ExtraUsage, Input,
+    Limits, LimitsConfig, Source, StateFile, UsageCache, Window,
 };
 use cc_usage::statusline::git::GitStatus;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -400,6 +400,7 @@ fn account_is_rechecked_on_a_new_slot_new_limits_or_after_a_minute() {
     let cache = AccountCache {
         source: "/h/.claude/.claude.json".into(),
         email: "a@x".into(),
+        billing_type: Some(String::new()),
         at: lim.key(),
         checked_at: Some(now() - TimeDelta::seconds(30)),
     };
@@ -426,12 +427,54 @@ fn account_is_rechecked_on_a_new_slot_new_limits_or_after_a_minute() {
         &cache,
         now() + TimeDelta::seconds(30)
     ));
+    // 과금 방식을 적기 전의 캐시(업데이트 직후)는 한 번 다시 읽는다 — 1분을 기다리면 그동안 API 과금 세션에 경고가 남는다.
+    let before_billing = AccountCache {
+        billing_type: None,
+        ..cache.clone()
+    };
+    assert!(need_account_check(
+        "/h/.claude/.claude.json",
+        &lim,
+        &before_billing,
+        now()
+    ));
     // 다른 자리의 캐시는 쓰지 않는다.
     assert_eq!(
         account_cached("/h/.claude/.claude.json", &cache),
         Some("a@x")
     );
     assert_eq!(account_cached("/w/.claude.json", &cache), None);
+}
+
+/// 캐시가 API 과금이라고 할 때만, 그리고 이 자리의 캐시일 때만 한도를 뺀다.
+#[test]
+fn api_billing_is_taken_from_this_slots_cache_only() {
+    let cache = |billing: Option<&str>| AccountCache {
+        source: "/h/.claude/.claude.json".into(),
+        email: "a@x".into(),
+        billing_type: billing.map(str::to_owned),
+        at: "-/-".into(),
+        checked_at: Some(now()),
+    };
+    assert!(api_billing_cached(
+        "/h/.claude/.claude.json",
+        &cache(Some("prepaid"))
+    ));
+    assert!(!api_billing_cached(
+        "/w/.claude.json",
+        &cache(Some("prepaid"))
+    ));
+    for other in [
+        Some("stripe_subscription"),
+        Some("usage_based"),
+        Some(""),
+        None,
+    ] {
+        assert!(
+            !api_billing_cached("/h/.claude/.claude.json", &cache(other)),
+            "{other:?}"
+        );
+    }
 }
 
 /// cc-usage 가 쓴 캐시를 그대로 읽는다 — Go 의 zero 시각은 없음, 모르는 필드는 무시.
