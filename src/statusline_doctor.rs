@@ -157,9 +157,20 @@ pub fn doctor(
 fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Billing, PathBuf) {
     let (account, email, billing) = match slot.read_account_at() {
         Some((path, a)) => {
-            let billing = Billing::Read {
-                value: a.billing_type.clone(),
-                from: path.display().to_string(),
+            // statusline 과 같은 판정 — 설정 파일은 로그인 기록이 없을 때만 본다.
+            let mut api_key = None;
+            claude_account::is_api_billing(&a, || {
+                api_key = slot.api_key_source();
+                api_key.is_some()
+            });
+            let billing = Billing::File {
+                path: path.display().to_string(),
+                logged_in: a.oauth_account,
+                billing_type: a.billing_type.clone(),
+                settings: claude_account::settings_file(&slot.config_dir)
+                    .display()
+                    .to_string(),
+                api_key,
             };
             let email = Some(a.email.clone());
             (Some(a), email, billing)
@@ -168,11 +179,11 @@ fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Billing,
             let cached: AccountCache = read(&slot.account_file());
             let source = slot.account_source();
             let email = account_cached(&source, &cached).map(str::to_owned);
-            // 과금 방식을 적기 전의 캐시(`None`)면 모른다.
-            let billing = match cached.billing_type.filter(|_| cached.source == source) {
-                Some(value) => Billing::Read {
-                    value: Some(value).filter(|v| !v.is_empty()),
-                    from: format!("계정 캐시 {}", slot.account_file().display()),
+            // 판정을 적기 전의 캐시(`None`)면 모른다.
+            let billing = match cached.api_billing.filter(|_| cached.source == source) {
+                Some(api) => Billing::Cached {
+                    api,
+                    from: slot.account_file().display().to_string(),
                 },
                 None => Billing::Unknown,
             };
@@ -183,33 +194,60 @@ fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Billing,
     (account, billing, bucket)
 }
 
-/// doctor 가 보이는 과금 방식 판정 — 값과 그것을 읽은 자리.
+/// doctor 가 보이는 과금 방식 판정과 그 근거.
 enum Billing {
-    /// `billingType`(없으면 `None`)을 `from` 에서 읽었다.
-    Read { value: Option<String>, from: String },
+    /// 계정 파일(`path`)을 읽었다. `api_key` 는 로그인 기록이 없을 때만 본 `settings` 의 API key 자리.
+    File {
+        path: String,
+        logged_in: bool,
+        billing_type: Option<String>,
+        settings: String,
+        api_key: Option<(PathBuf, &'static str)>,
+    },
+    /// 계정 파일을 못 읽어 statusline 이 남긴 계정 캐시(`from`)의 판정을 썼다.
+    Cached { api: bool, from: String },
     /// 계정 파일도 계정 캐시도 답하지 못했다.
     Unknown,
 }
 
 impl Billing {
     fn is_api(&self) -> bool {
-        matches!(self, Billing::Read { value, .. } if claude_account::is_api_billing(value.as_deref()))
+        match self {
+            Billing::File {
+                logged_in, api_key, ..
+            } => !logged_in && api_key.is_some(),
+            Billing::Cached { api, .. } => *api,
+            Billing::Unknown => false,
+        }
     }
 
-    /// 판정과 근거 한 줄. API 과금이 아니면 "구독으로 본다" — 허용 목록 밖은 모두 지금처럼 한도를 다룬다.
+    /// 판정과 근거 한 줄.
     fn describe(&self) -> String {
         match self {
-            Billing::Read { value, from } if self.is_api() => format!(
-                "API 과금 세션 — 한도 표시 없음 (billingType {:?} · {from})",
-                value.as_deref().unwrap_or_default()
+            Billing::File {
+                path,
+                api_key: Some((settings, field)),
+                ..
+            } if self.is_api() => format!(
+                "API 과금 세션 — 한도 표시 없음 ({path} 에 oauthAccount 없음 · {} 에 {field})",
+                settings.display()
             ),
-            Billing::Read {
-                value: Some(value),
-                from,
-            } => format!("구독으로 본다 (billingType {value:?} · {from})"),
-            Billing::Read { value: None, from } => {
-                format!("구독으로 본다 (billingType 없음 · {from})")
+            Billing::File {
+                path,
+                logged_in: true,
+                billing_type,
+                ..
+            } => match billing_type {
+                Some(t) => format!("구독으로 본다 ({path} 에 oauthAccount 있음 · billingType {t:?})"),
+                None => format!("구독으로 본다 ({path} 에 oauthAccount 있음 · billingType 없음)"),
+            },
+            Billing::File { path, settings, .. } => format!(
+                "API 과금으로 보지 않는다 ({path} 에 oauthAccount 없음 · {settings} 에 API key 없음)"
+            ),
+            Billing::Cached { api: true, from } => {
+                format!("API 과금 세션 — 한도 표시 없음 (계정 캐시 {from})")
             }
+            Billing::Cached { api: false, from } => format!("구독으로 본다 (계정 캐시 {from})"),
             Billing::Unknown => {
                 "모름 — 구독으로 본다 (계정 파일도 계정 캐시도 답하지 않았다)".into()
             }

@@ -66,6 +66,13 @@ impl Slot {
         self.read_account_at().map(|(_, account)| account)
     }
 
+    /// 이 설정 폴더의 `settings.json` 에 API key 가 있으면 그 파일과 자리(`claude_account::settings_api_key`). 못 읽으면 `None`.
+    pub fn api_key_source(&self) -> Option<(PathBuf, &'static str)> {
+        let path = claude_account::settings_file(&self.config_dir);
+        let raw = std::fs::read_to_string(&path).ok()?;
+        claude_account::settings_api_key(&raw).map(|field| (path, field))
+    }
+
     /// `read_account` 와 같고 읽힌 파일의 경로를 함께 — `doctor` 가 근거로 보인다.
     pub fn read_account_at(&self) -> Option<(PathBuf, claude_account::AccountFile)> {
         self.account_paths.iter().find_map(|p| {
@@ -157,9 +164,10 @@ impl Observed {
 /// 못 읽으면 계정 캐시를 덮지 않는다. stdin 에 한도가 있으면 그 관측을 `state.json` 에 남긴다(6시간 폴백·`auto` 판단).
 /// usage API 응답이 필요하면(`need_refresh`) `cc-usage refresh` 를 detached 로 띄운다.
 ///
-/// 계정이 API 과금이면(`claude_account::is_api_billing`) `source` 와 무관하게 `none` 처럼 — 그 계정의 `state.json`·
-/// `usage.json` 을 읽지도 쓰지도 않고 갱신도 띄우지 않는다(`Observed::api_billing`). 계정 캐시(`account.json`)만 지금처럼
-/// 읽고 고친다 — 과금 방식이 바뀌는 것(`/login` 으로 구독 계정에 들어감)도 같은 주기로 알아챈다.
+/// 세션이 API 과금이면(`claude_account::is_api_billing` — 로그인 기록 없음 + API key) `source` 와 무관하게 `none` 처럼 — 그
+/// 계정의 `state.json`·`usage.json` 을 읽지도 쓰지도 않고 갱신도 띄우지 않는다(`Observed::api_billing`). 계정 캐시
+/// (`account.json`)에 판정을 적고 계정 파일과 같은 주기로 다시 판정한다 — `/login` 으로 구독 계정에 들어가면 알아챈다.
+/// stdin 이 구독 한도(`rate_limits`)를 주면 판정과 무관하게 한도를 다룬다.
 pub fn observe(
     cfg: &crate::limits::LimitsConfig,
     configured_dir: Option<&str>,
@@ -207,8 +215,10 @@ pub fn observe(
     let source = slot.account_source();
     let account: AccountCache = read(&slot.account_file());
     let mut email = account_cached(&source, &account).map(str::to_owned);
-    // API 과금 계정이면 그 계정의 캐시를 읽지 않는다 — 한도는 빈 값이고, 그 지문(`-/-`)이 계정 캐시의 `at` 과 맞물린다.
-    let mut api_billing = api_billing_cached(&source, &account);
+    // stdin 의 `rate_limits` 는 구독 한도다 — 보이면 구독 세션이고, 계정 판정과 무관하게 한도를 다룬다.
+    let stdin_present = input.five_hour.is_some() || input.seven_day.is_some();
+    // API 과금 세션이면 그 계정의 캐시를 읽지 않는다 — 한도는 빈 값이고, 그 지문(`-/-`)이 계정 캐시의 `at` 과 맞물린다.
+    let mut api_billing = !stdin_present && api_billing_cached(&source, &account);
     let (mut bucket, mut state, mut usage) = if api_billing {
         Default::default()
     } else {
@@ -222,7 +232,9 @@ pub fn observe(
 
     if need_account_check(&source, &lim, &account, now) {
         if let Some(current) = slot.read_account() {
-            let now_api = is_api_billing(current.billing_type.as_deref());
+            // 설정 파일은 로그인 기록이 없을 때만 읽는다.
+            let file_api = is_api_billing(&current, || slot.api_key_source().is_some());
+            let now_api = file_api && !stdin_present;
             if now_api {
                 lim = Limits::default();
             } else if api_billing || email.as_deref() != Some(current.email.as_str()) {
@@ -234,7 +246,7 @@ pub fn observe(
             let updated = AccountCache {
                 source,
                 email: current.email,
-                billing_type: Some(current.billing_type.unwrap_or_default()),
+                api_billing: Some(file_api),
                 at: lim.key(),
                 checked_at: Some(now),
             };
@@ -245,7 +257,6 @@ pub fn observe(
         return Some(Observed::api_billing(email));
     }
 
-    let stdin_present = input.five_hour.is_some() || input.seven_day.is_some();
     let stdin_side = use_stdin(cfg, &state, stdin_present, now);
     let mut dirty = false;
     if stdin_present {

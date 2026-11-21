@@ -215,48 +215,75 @@ fn a_fresh_file_token_beats_an_expired_keychain_token() {
     assert!(!file_beats_expired_keychain(&token(Some(1_999_000)), now));
 }
 
-/// 과금 방식 — `billingType` 을 그대로 옮기고, 없거나 문자열이 아니면 모름(`None`). 새 필드라 타입이 틀려도 이메일은
-/// 지킨다(파일 전체를 버리면 배지와 갱신까지 잃는다).
+/// 로그인 기록(`oauthAccount`)이 있나와 `billingType` — `oauthAccount` 가 없거나 null 이면 로그인 기록이 없다(API key 로만 도는
+/// 설정 폴더의 실측 꼴). `billingType` 은 보이기만 하는 값이라 타입이 틀려도 이메일은 지킨다.
 #[test]
-fn account_file_carries_the_billing_type() {
-    let billing = |raw: &str| parse_account_file(raw).map(|a| (a.email, a.billing_type));
+fn account_file_tells_whether_a_claude_login_exists() {
+    let read =
+        |raw: &str| parse_account_file(raw).map(|a| (a.oauth_account, a.email, a.billing_type));
+    // API key 로 도는 설정 폴더(2026-11-20 실측 — 계정 관련 키는 이 둘뿐이었다).
     assert_eq!(
-        billing(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":"prepaid"}}"#),
-        Some(("a@x".into(), Some("prepaid".into())))
+        read(
+            r#"{"customApiKeyResponses":{"approved":[],"rejected":[]},"mcpNeedsAuthNoticed":true}"#
+        ),
+        Some((false, String::new(), None))
     );
     assert_eq!(
-        billing(r#"{"oauthAccount":{"emailAddress":"a@x"}}"#),
-        Some(("a@x".into(), None))
+        read(r#"{"oauthAccount":null}"#),
+        Some((false, String::new(), None))
     );
     assert_eq!(
-        billing(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":null}}"#),
-        Some(("a@x".into(), None))
+        read(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":"stripe_subscription"}}"#),
+        Some((true, "a@x".into(), Some("stripe_subscription".into())))
     );
     assert_eq!(
-        billing(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":7}}"#),
-        Some(("a@x".into(), None))
+        read(r#"{"oauthAccount":{"emailAddress":"a@x"}}"#),
+        Some((true, "a@x".into(), None))
+    );
+    assert_eq!(
+        read(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":7}}"#),
+        Some((true, "a@x".into(), None))
     );
 }
 
-/// API 과금은 실측한 값(`prepaid`)일 때만이다 — 구독 값·Enterprise 사용량 과금·없음·모르는 값은 모두 아니다. 구독을 API
-/// 과금으로 잘못 보면 구독 세션의 한도가 경고 없이 사라진다.
+/// API key 가 있는 자리 — `env.ANTHROPIC_API_KEY`(실측) 또는 `apiKeyHelper`. 비었거나 문자열이 아니거나 읽을 수 없으면 없다.
 #[test]
-fn only_measured_billing_types_mean_api_billing() {
-    assert!(is_api_billing(Some("prepaid")));
-    // Claude Code 2.1.329 바이너리의 구독 집합(크레딧 구매가 되는 billingType)과 Enterprise 사용량 과금.
-    for subscription in [
-        "stripe_subscription",
-        "stripe_subscription_contracted",
-        "stripe_subscription_enterprise_self_serve",
-        "aws_marketplace",
-        "c4e_consumption_trial",
-        "apple_subscription",
-        "google_play_subscription",
-        "usage_based",
+fn settings_api_key_names_where_the_key_is() {
+    assert_eq!(
+        settings_api_key(r#"{"env":{"ANTHROPIC_API_KEY":"sk-ant-x"}}"#),
+        Some("env.ANTHROPIC_API_KEY")
+    );
+    assert_eq!(
+        settings_api_key(r#"{"apiKeyHelper":"~/bin/key.sh"}"#),
+        Some("apiKeyHelper")
+    );
+    for none in [
+        r#"{}"#,
+        r#"{"env":{"OTHER":"x"}}"#,
+        r#"{"env":{"ANTHROPIC_API_KEY":""}}"#,
+        r#"{"env":{"ANTHROPIC_API_KEY":"  "}}"#,
+        r#"{"env":{"ANTHROPIC_API_KEY":1}}"#,
+        r#"{"apiKeyHelper":""}"#,
+        "not json",
     ] {
-        assert!(!is_api_billing(Some(subscription)), "{subscription}");
+        assert_eq!(settings_api_key(none), None, "{none}");
     }
-    for unknown in [None, Some(""), Some("Prepaid"), Some("postpaid")] {
-        assert!(!is_api_billing(unknown), "{unknown:?}");
-    }
+}
+
+/// API 과금은 로그인 기록이 없고 API key 가 있을 때만이다. 로그인 기록이 있으면(구독으로 로그인해 둔 세션) API key 가 있어도,
+/// API key 가 없으면 로그인 기록이 없어도(`CLAUDE_CODE_OAUTH_TOKEN` 구독 세션일 수 있다) 아니다 — 구독 세션의 한도를 경고
+/// 없이 지우면 안 된다. 로그인 기록이 있으면 설정 파일을 보지도 않는다.
+#[test]
+fn api_billing_needs_no_login_and_an_api_key() {
+    let no_login = AccountFile::default();
+    let logged_in = AccountFile {
+        email: "a@x".into(),
+        oauth_account: true,
+        ..AccountFile::default()
+    };
+    assert!(is_api_billing(&no_login, || true));
+    assert!(!is_api_billing(&no_login, || false));
+    assert!(!is_api_billing(&logged_in, || panic!(
+        "로그인 기록이 있으면 설정 파일을 보지 않는다"
+    )));
 }

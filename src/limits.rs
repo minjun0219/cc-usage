@@ -429,10 +429,10 @@ pub struct AccountCache {
     /// 이메일을 읽은 계정 파일 경로 — 다른 자리의 캐시면 쓰지 않는다.
     pub source: String,
     pub email: String,
-    /// 계정 파일의 `oauthAccount.billingType` — API 과금 판정(`claude_account::is_api_billing`)에 쓴다. 읽었는데 없으면
-    /// `Some("")`, `None` 은 이 필드를 적기 전의 캐시다(그래서 한 번 다시 읽는다 — `need_account_check`).
+    /// 이 자리의 세션이 API 과금인가(`claude_account::is_api_billing`) — 계정 파일과 설정 파일로 판정한 값. `None` 은 이
+    /// 필드를 적기 전의 캐시다(그래서 한 번 다시 읽는다 — `need_account_check`). 예전 판의 `billing_type` 필드는 무시한다.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub billing_type: Option<String>,
+    pub api_billing: Option<bool>,
     /// 읽었을 때의 한도 지문(`Limits::key`).
     pub at: String,
     #[serde(with = "go_time", skip_serializing_if = "Option::is_none")]
@@ -662,7 +662,7 @@ pub fn need_account_check(
 ) -> bool {
     account.source != source
         || account.at != lim.key()
-        || account.billing_type.is_none()
+        || account.api_billing.is_none()
         || account.checked_at.is_none_or(|t| now - t >= ACCOUNT_TTL)
 }
 
@@ -673,8 +673,7 @@ pub fn account_cached<'a>(source: &str, account: &'a AccountCache) -> Option<&'a
 
 /// 캐시가 이 자리의 계정을 API 과금이라고 하나 — **이 자리의 계정 파일에서 읽은 것일 때만**.
 pub fn api_billing_cached(source: &str, account: &AccountCache) -> bool {
-    account.source == source
-        && crate::claude_account::is_api_billing(account.billing_type.as_deref())
+    account.source == source && account.api_billing == Some(true)
 }
 
 /// 경보 단계.

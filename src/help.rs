@@ -56,8 +56,8 @@ pub const STATUSLINE: &str = r#"cc-usage statusline — Claude Code 의 statusLi
         이긴다).
         none 은 token·API·cache 를 일절 보지 않고 1번 줄과 모델 · ctx 만 그린다
         (extraCommands 는 그대로 붙는다).
-        세션 계정이 API 과금이면(.claude.json 의 oauthAccount.billingType 이 prepaid)
-        source 와 무관하게 none 처럼 한도를 뺀다 — 구독 한도가 없는 세션이다.
+        API key 로 도는 세션(.claude.json 에 oauthAccount 가 없고 settings.json 에
+        env.ANTHROPIC_API_KEY 나 apiKeyHelper)은 source 와 무관하게 none 처럼 한도를 뺀다.
 
   Antigravity(agy) 에서도 같은 명령을 건다 — stdin 의 product 로 알아본다.
         Claude 쪽 token·API·cache 는 source 와 무관하게 보지 않고, 한도는 agy 가 주는
@@ -69,7 +69,7 @@ pub const FIELDS: &str = r#"필드 (모두 생략 가능, 이름은 rocky.json �
   configDir            ~/.claude       Claude Code 설정 폴더 ($CLAUDE_CONFIG_DIR 가 이긴다)
   source               auto            stdin (Pro/Max) / api (Team) / auto / none (한도 끔)
                                        statusline 에서는 $CC_USAGE_SOURCE · --source 가 이긴다
-                                       API 과금 세션(billingType prepaid)은 무관하게 none 처럼
+                                       API key 세션(로그인 기록 없음 + API key)은 none 처럼
   keychainService      Claude Code-credentials
                                        macOS keychain 항목. configDir 세션에만 쓴다.
                                        없으면 Claude Code 이름 규칙(-<sha256(dir)[:8]> 접미사)
