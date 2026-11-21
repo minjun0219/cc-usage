@@ -28,9 +28,11 @@ Sonnet high · ctx 40% · 7d 25% (2d 4h) · 5h 0% (↻18:00) · $38.40 ($50.00)
 | `none` | 다루지 않음(경로·git·모델·ctx만 표시) | 호출하지 않음 (token·cache도 보지 않음) |
 | (API 과금 세션) | `source`와 무관하게 `none`처럼 다루지 않음 | 호출하지 않음 (token·usage cache도 보지 않음) |
 
-- **API 과금 세션에는 한도를 그리지 않습니다.** 구독 로그인 없이 API 과금(Console 계정)으로 도는 세션에는 5h/7d 구독 한도가 없습니다. 보여 줄 값이 없으니 경고 대신 "해당 없음"으로 다룹니다. `source`가 `api`·`auto`여도 token을 찾지 않고 usage API도 부르지 않으며 refresh도 띄우지 않습니다. 계정 배지는 그대로 붙습니다.
+- **API 과금 세션에는 한도를 그리지 않습니다.** 구독 로그인 없이 API key로 도는 세션에는 5h/7d 구독 한도가 없습니다. 보여 줄 값이 없으니 경고 대신 "해당 없음"으로 다룹니다. `source`가 `api`·`auto`여도 token을 찾지 않고 usage API도 부르지 않으며 refresh도 띄우지 않습니다.
 
-  판정은 세션 설정 폴더의 `.claude.json`에 있는 `oauthAccount.billingType` 하나로 합니다. **API 과금으로 보는 값은 실측한 `prepaid`뿐입니다.** 값이 없거나 그 밖의 값이면 지금처럼 한도를 다룹니다. 그래서 구독 세션에서 token을 정말 못 읽으면 `usage: token not found …` 경고가 그대로 남습니다. 거꾸로 "구독 값이 아니면 API 과금"으로 보지 않는 이유는 구독 계정에도 이 필드가 비어 있을 수 있어서입니다. 그렇게 판정하면 구독 세션의 한도가 경고 없이 사라집니다. keychain에 `claudeAiOauth`가 없다는 신호도 쓰지 않습니다. 구독 세션에서 token을 못 읽는 경우와 구분되지 않고, statusline 경로에서 keychain을 불러야 하기 때문입니다. 계정 파일은 배지용으로 이미 다시 읽고 있어서(한도가 움직이거나 1분이 지나면) 이 판정 때문에 늘어나는 프로세스나 파일 읽기는 없습니다.
+  판정 조건은 둘이고 **둘 다** 맞아야 합니다. 세션 설정 폴더의 `.claude.json`에 Claude 계정 로그인 기록(`oauthAccount`)이 없어야 하고, 같은 폴더의 `settings.json`에 API key(`env.ANTHROPIC_API_KEY` 또는 `apiKeyHelper`)가 있어야 합니다. stdin이 구독 한도(`rate_limits`)를 주면 조건과 무관하게 그 한도를 그립니다. 하나만으로는 판정하지 않습니다. 로그인 기록만 없으면 `CLAUDE_CODE_OAUTH_TOKEN`으로 도는 구독 세션일 수 있고, API key만 있으면 구독으로 로그인해 둔 세션일 수 있기 때문입니다. 그래서 구독 세션에서 token을 정말 못 읽으면 `usage: token not found …` 경고가 그대로 남습니다.
+
+  알아보지 못하는 경우도 있습니다. API key를 셸 환경 변수·프로젝트 설정·관리 설정에 둔 세션, 그리고 로그인해 둔 채 API key를 승인한 세션입니다. 그때는 예전처럼 경고가 남으니 `--source none`을 붙이세요. keychain에 `claudeAiOauth`가 없다는 신호는 쓰지 않습니다. 구독 세션에서 token을 못 읽는 경우와 구분되지 않고, statusline 경로에서 keychain을 불러야 하기 때문입니다. 판정은 배지용 계정 파일 확인과 같은 주기로 하고(한도가 움직이거나 1분이 지나면), `settings.json`은 로그인 기록이 없을 때만 읽습니다.
 
 - `cc-usage statusline`은 **network를 기다리지 않습니다.** usage API는 이 경로에서 호출하지 않고, 갱신이 필요하면 `cc-usage refresh`를 detached로 실행한 뒤 즉시 종료합니다. 로컬 subprocess(`git status`, `extraCommands`)는 타임아웃을 걸고 실행합니다. 느리거나 실패하면 그 세그먼트만 빠집니다. `extraCommands`에 network를 쓰는 명령을 넣는 것은 설정하는 쪽의 선택입니다. 그 지연은 타임아웃이 막습니다.
 - `refresh`는 lock으로 동시에 하나만 실행됩니다. 실패하면 backoff 간격을 1m부터 두 배씩 늘리고 30m에서 자릅니다. 429에는 `Retry-After`를 따릅니다.
@@ -215,7 +217,7 @@ cc-usage doctor
 
 `token:` 줄이 ok면 할 일이 없습니다. 못 읽으면 `keychain 후보` 목록에서 맞는 항목을 골라 `keychainService`에 넣으세요. 처음 접근 시 keychain 허용 창이 뜰 수 있습니다.
 
-`과금:` 줄이 판정과 근거를 보여 줍니다. `API 과금 세션 — 한도 표시 없음 (billingType "prepaid" · <읽은 .claude.json>)`이면 이 세션은 한도를 그리지 않습니다. 그때는 `token:` 줄도 `(API 과금 세션 — 찾지 않았다)`로 나오며 고칠 것이 없습니다. 그 밖에는 `구독으로 본다 (billingType "…" · <파일>)`처럼 읽은 값을 함께 보여 줍니다. 계정 파일을 못 읽으면 statusline이 남긴 계정 캐시를 근거로 씁니다.
+`과금:` 줄이 판정과 근거를 보여 줍니다. `API 과금 세션 — 한도 표시 없음 (<.claude.json> 에 oauthAccount 없음 · <settings.json> 에 env.ANTHROPIC_API_KEY)`이면 이 세션은 한도를 그리지 않습니다. 그때는 `token:` 줄도 `(API 과금 세션 — 찾지 않았다)`로 나오며 고칠 것이 없습니다. 로그인 기록이 있으면 `구독으로 본다 (<파일> 에 oauthAccount 있음)`으로 나옵니다. 계정 파일을 못 읽으면 statusline이 남긴 계정 캐시를 근거로 씁니다. key 값은 출력하지 않습니다.
 
 ### 3. 필드 검증 (처음 한 번)
 

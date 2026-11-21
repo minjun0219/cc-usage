@@ -281,23 +281,25 @@ fn refresh_leaves_source_none_alone() {
     assert!(!home.bucket(Some(EMAIL)).join("usage.json").exists());
 }
 
-/// API 과금 계정(`billingType: "prepaid"`)에는 구독 한도가 없다 — 토큰이 있어도 부르지 않고 아무것도 쓰지 않는다. statusline 은
-/// 애초에 띄우지 않지만, 계정 캐시가 뒤처진 사이에 띄운 갱신이나 손으로 부른 것도 여기서 멈춘다.
+/// API key 로 도는 설정 폴더의 실측 꼴 — `oauthAccount` 없는 `.claude.json` 과 `env.ANTHROPIC_API_KEY` 가 있는 `settings.json`.
+const NO_LOGIN_CLAUDE_JSON: &str =
+    r#"{"customApiKeyResponses":{"approved":[],"rejected":[]},"mcpNeedsAuthNoticed":true}"#;
+const KEY_SETTINGS: &str = r#"{"env":{"ANTHROPIC_API_KEY":"sk-ant-test-dummy"}}"#;
+
+/// API key 세션에는 구독 한도가 없다 — 토큰이 있어도 부르지 않고 아무것도 쓰지 않는다. statusline 은 애초에 띄우지 않지만,
+/// 계정 캐시가 뒤처진 사이에 띄운 갱신이나 손으로 부른 것도 여기서 멈춘다.
 #[test]
-fn refresh_leaves_an_api_billing_account_alone() {
+fn refresh_leaves_an_api_key_session_alone() {
     let api = FakeApi::start("200 OK", "", OK_BODY);
     let home = Home::new(
         Some(EMAIL),
         serde_json::json!({"source": "api", "tokenEnv": "CC_USAGE_TEST_TOKEN"}),
     );
-    std::fs::write(
-        home.account_file(),
-        format!(r#"{{"oauthAccount":{{"emailAddress":"{EMAIL}","billingType":"prepaid"}}}}"#),
-    )
-    .unwrap();
+    std::fs::write(home.account_file(), NO_LOGIN_CLAUDE_JSON).unwrap();
+    std::fs::write(home.path.join(".claude/settings.json"), KEY_SETTINGS).unwrap();
     home.refresh(&api.url, &TOKEN_ENV);
     assert!(api.requests.lock().unwrap().is_empty());
-    assert!(!home.bucket(Some(EMAIL)).exists());
+    assert!(!home.bucket(None).exists());
 }
 
 /// `--full` 은 응답이 필요하면 갱신을 detached 로 띄우고 바로 끝난다 — 다음 렌더가 그 결과를 그린다.
@@ -517,7 +519,7 @@ fn doctor_reports_what_statusline_would_do() {
         format!("config_dir:    {home_dir}/.claude"),
         format!("계정:          {EMAIL}"),
         format!(
-            "과금:          구독으로 본다 (billingType 없음 · {home_dir}/.claude/.claude.json)"
+            "과금:          구독으로 본다 ({home_dir}/.claude/.claude.json 에 oauthAccount 있음)"
         ),
         "keychain:      cc-usage-test-absent".to_string(),
         format!("creds file:    {home_dir}/.claude/.credentials.json"),
@@ -625,28 +627,26 @@ fn doctor_falls_back_to_the_cached_account_bucket() {
     assert!(out.contains("크레딧:        모름 (-)\n"), "{out}");
 }
 
-/// API 과금 세션 — doctor 는 판정과 근거(값·읽은 파일)를 보이고, statusline 처럼 토큰을 찾지 않는다. 구독 값이면 그 값을
-/// 근거로 "구독으로 본다". 계정 파일을 못 읽으면 statusline 이 남긴 계정 캐시를 근거로 보인다.
+/// API key 세션 — doctor 는 판정과 근거(로그인 기록이 없는 계정 파일, API key 가 있는 설정 파일)를 보이고, statusline 처럼
+/// 토큰을 찾지 않는다. 계정 파일을 못 읽으면 statusline 이 남긴 계정 캐시를 근거로 보인다. 로그인 기록이 있거나 API key 가
+/// 없으면 API 과금으로 보지 않는다.
 #[test]
 fn doctor_tells_an_api_billing_session_and_why() {
     let home = Home::new(Some(EMAIL), serde_json::json!({"source": "api"}));
     let logan = home.path.join(".claude-logan");
     std::fs::create_dir_all(&logan).unwrap();
-    let account = logan.join(".claude.json");
-    std::fs::write(
-        &account,
-        format!(
-            r#"{{"oauthAccount":{{"emailAddress":"{EMAIL}","billingType":"prepaid","hasExtraUsageEnabled":false}}}}"#
-        ),
-    )
-    .unwrap();
+    let claude_json = logan.join(".claude.json");
+    let settings = logan.join("settings.json");
+    std::fs::write(&claude_json, NO_LOGIN_CLAUDE_JSON).unwrap();
+    std::fs::write(&settings, KEY_SETTINGS).unwrap();
     let env = [("CLAUDE_CONFIG_DIR", logan.to_str().unwrap())];
     let (code, out, err) = home.run("http://127.0.0.1:1/usage", &env, &["doctor"]);
     assert_eq!(code, 0, "{err}");
     for want in [
         format!(
-            "과금:          API 과금 세션 — 한도 표시 없음 (billingType \"prepaid\" · {})\n",
-            account.display()
+            "과금:          API 과금 세션 — 한도 표시 없음 ({} 에 oauthAccount 없음 · {} 에 env.ANTHROPIC_API_KEY)\n",
+            claude_json.display(),
+            settings.display()
         ),
         "크레딧:        해당 없음 (API 과금 세션)\n".to_string(),
         "token:         (API 과금 세션 — 찾지 않았다)\n".to_string(),
@@ -654,28 +654,32 @@ fn doctor_tells_an_api_billing_session_and_why() {
         assert!(out.contains(&want), "{want:?} 가 없다:\n{out}");
     }
     assert!(!out.contains("token not found"), "{out}");
+    assert!(
+        !out.contains("sk-ant-test-dummy"),
+        "키 값이 새면 안 된다:\n{out}"
+    );
 
     // 계정 파일이 깨져 있으면 statusline 이 남긴 계정 캐시를 근거로.
     let slot = cc_usage::claude_account::cache_slot(&home.path.join(".cache"), &logan);
     std::fs::create_dir_all(&slot).unwrap();
     std::fs::write(
         slot.join("account.json"),
-        serde_json::json!({"source": account, "email": EMAIL, "billing_type": "prepaid", "at": "-/-", "checked_at": NOW}).to_string(),
+        serde_json::json!({"source": claude_json, "email": "", "api_billing": true, "at": "-/-", "checked_at": NOW}).to_string(),
     )
     .unwrap();
-    std::fs::write(&account, "{ half-written").unwrap();
+    std::fs::write(&claude_json, "{ half-written").unwrap();
     let (_, out, _) = home.run("http://127.0.0.1:1/usage", &env, &["doctor"]);
     assert!(
         out.contains(&format!(
-            "과금:          API 과금 세션 — 한도 표시 없음 (billingType \"prepaid\" · 계정 캐시 {})",
+            "과금:          API 과금 세션 — 한도 표시 없음 (계정 캐시 {})\n",
             slot.join("account.json").display()
         )),
         "{out}"
     );
 
-    // 구독 값이면 그 값을 근거로 구독으로 보고, 토큰을 찾는다(여기서는 없어서 이유가 나온다).
+    // 로그인 기록이 있으면 API key 가 있어도 구독으로 보고 토큰을 찾는다(여기서는 없어서 이유가 나온다).
     std::fs::write(
-        &account,
+        &claude_json,
         format!(
             r#"{{"oauthAccount":{{"emailAddress":"{EMAIL}","billingType":"stripe_subscription"}}}}"#
         ),
@@ -684,10 +688,23 @@ fn doctor_tells_an_api_billing_session_and_why() {
     let (_, out, _) = home.run("http://127.0.0.1:1/usage", &env, &["doctor"]);
     assert!(
         out.contains(&format!(
-            "과금:          구독으로 본다 (billingType \"stripe_subscription\" · {})\n",
-            account.display()
+            "과금:          구독으로 본다 ({} 에 oauthAccount 있음)\n",
+            claude_json.display()
         )),
         "{out}"
     );
     assert!(out.contains("token:         token not found ("), "{out}");
+
+    // 로그인 기록도 API key 도 없으면 API 과금으로 보지 않는다.
+    std::fs::write(&claude_json, NO_LOGIN_CLAUDE_JSON).unwrap();
+    std::fs::remove_file(&settings).unwrap();
+    let (_, out, _) = home.run("http://127.0.0.1:1/usage", &env, &["doctor"]);
+    assert!(
+        out.contains(&format!(
+            "과금:          API 과금으로 보지 않는다 ({} 에 oauthAccount 없음 · {} 에 API key 없음)\n",
+            claude_json.display(),
+            settings.display()
+        )),
+        "{out}"
+    );
 }

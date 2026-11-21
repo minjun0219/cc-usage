@@ -66,28 +66,51 @@ pub struct AccountFile {
     /// 크레딧(extra usage)이 켜져 있나 — 필드가 없으면 `None`(모름). `doctor` 가 usage 응답이 없는 구간을 이것으로 메운다.
     /// "필드 없음" 과 `false` 를 가른다 — 같게 다루면 이 필드를 쓰지 않는 설치에서 크레딧이 켜져 있어도 꺼진 것으로 단정한다.
     pub extra_usage_enabled: Option<bool>,
-    /// `oauthAccount.billingType` — 없거나 문자열이 아니면 `None`(모름). API 과금 판정(`is_api_billing`)에만 쓴다.
-    pub billing_type: Option<String>,
+    /// `oauthAccount` 가 있나 — Claude 계정(OAuth)으로 로그인한 기록. API key 로만 도는 설정 폴더에는 없다(2026-11-20 실측).
+    /// API 과금 판정(`is_api_billing`)에 쓴다.
+    pub logged_in: bool,
 }
 
-/// API 과금으로 보는 `billingType` 값 — **실측한 값만** 넣는다. 지금은 `prepaid` 하나다(2026-11-20, Console 로그인 설정
-/// 폴더의 `.claude.json`). Claude Code 2.1.329 바이너리에는 이 값이 나오지 않는다 — 서버가 주는 Console 조직의 값이다.
+/// 이 세션이 API 과금인가 — **Claude 계정 로그인 기록(`oauthAccount`)이 없고 API key 가 설정돼 있을 때만**. `has_key_setting` 은
+/// 로그인 기록이 없을 때만 부른다(설정 파일을 읽는 일을 줄인다).
 ///
-/// 구독 쪽을 나열해 "그 밖은 API 과금" 으로 보지 않는다. 구독 계정에도 `billingType` 이 없을 수 있고(Claude Code 는 프로필의
-/// `billing_type` 이 null 이면 기존 값을 두거나 비운다), 모르는 값이 새로 생길 수 있다 — 그것을 API 과금으로 단정하면 구독
-/// 세션의 한도가 경고 없이 사라진다. 그래서 허용 목록이다: 여기 없는 값은 모두 지금처럼 한도를 그린다. 같은 바이너리에서
-/// 확인한 구독 값(크레딧 구매가 되는 집합): `stripe_subscription` · `stripe_subscription_contracted` ·
-/// `stripe_subscription_enterprise_self_serve` · `aws_marketplace` · `c4e_consumption_trial` · `apple_subscription` ·
-/// `google_play_subscription`. `usage_based` 는 Enterprise 사용량 과금 좌석이다(구독 OAuth 와 함께 쓰인다).
-pub const API_BILLING_TYPES: &[&str] = &["prepaid"];
+/// API 과금 세션에는 5h/7d 구독 한도가 없다 — 보여 줄 값이 없으니 경고가 아니라 "해당 없음" 이다. 근거(2026-11-20):
+/// API key 로 도는 설정 폴더의 `.claude.json` 에 `oauthAccount` 가 없고, `settings.json` 의 `env` 에 `ANTHROPIC_API_KEY` 가
+/// 있었다(실측). Claude Code(2.1.329)는 API key(`ANTHROPIC_API_KEY`·`apiKeyHelper`)가 잡히면 claude.ai OAuth 를 쓰지 않는다.
+///
+/// 둘 다 요구하는 이유: 로그인 기록만 없으면 로그인하지 않았거나 `CLAUDE_CODE_OAUTH_TOKEN` 으로 도는 구독 세션일 수 있고,
+/// API key 만 있으면 구독으로 로그인해 둔 세션일 수 있다(키를 승인하지 않았으면 구독으로 돈다). 그런 세션의 한도를 경고
+/// 없이 지우면 안 된다. 토큰(`claudeAiOauth`)이 없다는 것으로는 가르지 않는다 — 구독 세션에서 토큰을 못 읽는 경우와
+/// 구분되지 않고, statusline 경로에서 keychain 을 불러야 한다. 로그인해 둔 채 API key 를 승인한 세션은 알아보지 못한다 —
+/// 그때는 지금처럼 경고가 남는다(안전한 쪽).
+pub fn is_api_billing(file: &AccountFile, has_key_setting: impl FnOnce() -> bool) -> bool {
+    !file.logged_in && has_key_setting()
+}
 
-/// 이 계정이 API 과금인가 — `billingType` 이 `API_BILLING_TYPES` 에 있을 때만. 없거나 모르는 값이면 아니다.
+/// 이 설정 폴더의 사용자 설정 파일(`settings.json`) — API key 설정을 본다.
+pub fn settings_file(config_dir: &Path) -> PathBuf {
+    config_dir.join("settings.json")
+}
+
+/// 설정 파일(`settings.json`)에 API key 가 있나 — 있으면 그 자리 이름(`env.ANTHROPIC_API_KEY` · `apiKeyHelper`). 키 값은
+/// 꺼내지 않는다. 비었거나 문자열이 아니면 없는 것으로 본다. 읽을 수 없는 파일도 없는 것이다(구독으로 본다 — 안전한 쪽).
 ///
-/// API 과금 세션에는 5h/7d 구독 한도가 없다 — 보여 줄 값이 없으니 경고가 아니라 "해당 없음" 이다. 토큰(`claudeAiOauth`)이
-/// 없다는 것만으로는 가르지 않는다 — 구독 세션에서 토큰을 못 읽는 경우(keychain 잠김·이름 어긋남)와 구분되지 않고, 그 경고는
-/// 남겨야 한다. 읽으려면 statusline 경로에서 keychain 을 불러야 하는 것도 걸린다.
-pub fn is_api_billing(billing_type: Option<&str>) -> bool {
-    billing_type.is_some_and(|t| API_BILLING_TYPES.contains(&t))
+/// `ANTHROPIC_API_KEY` 는 실측한 자리다. `apiKeyHelper` 는 Claude Code 가 같은 무게로 다루는 자리다(OAuth 를 끄는 조건이
+/// `ANTHROPIC_API_KEY` 와 한 줄에 있다). 셸 환경 변수·프로젝트 설정·관리 설정에 둔 키는 보지 않는다.
+pub fn key_setting(raw: &str) -> Option<&'static str> {
+    let v: Value = serde_json::from_str(raw).ok()?;
+    let set = |p: &str| {
+        v.pointer(p)
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.trim().is_empty())
+    };
+    if set("/env/ANTHROPIC_API_KEY") {
+        Some("env.ANTHROPIC_API_KEY")
+    } else if set("/apiKeyHelper") {
+        Some("apiKeyHelper")
+    } else {
+        None
+    }
 }
 
 /// 계정 파일 내용 → 이메일·크레딧 힌트. `None` 은 **읽지 못했다**(JSON 이 아니거나 필드 타입이 틀림).
@@ -112,16 +135,10 @@ pub fn parse_account_file(raw: &str) -> Option<AccountFile> {
         Some(Value::String(email)) => email.clone(),
         Some(_) => return None,
     };
-    // 새로 읽는 필드라 타입이 틀려도 파일 전체를 버리지 않는다 — 모르는 값으로 두면 지금처럼 한도를 그린다(이메일·배지까지
-    // 잃을 이유가 없다).
-    let billing_type = account
-        .get("billingType")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
     Some(AccountFile {
         email,
         extra_usage_enabled,
-        billing_type,
+        logged_in: true,
     })
 }
 

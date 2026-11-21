@@ -57,10 +57,11 @@ PR 본문에 적는다.
 8. `none` 과 agy 는 Claude 쪽(token·API·cache·계정 파일)을 읽지도 쓰지도 않는다 — 같은 머신 Claude 세션의 숫자가 다른 호스트 줄에 그려진다.
 9. 테스트는 실제 token·API 에 닿으면 안 된다. macOS keychain 은 HOME 과 무관하므로 statusline 을 그리는 테스트는 없는
    `keychainService` 와 테스트 전용 `CC_USAGE_API_URL`(죽은 주소)을 함께 건다.
-10. API 과금 세션(`.claude.json` 의 `oauthAccount.billingType` 이 `claude_account::API_BILLING_TYPES` — 지금은 `prepaid`)은
-    `source` 와 무관하게 한도를 다루지 않는다. token·usage API·refresh·그 계정의 `state.json`/`usage.json` 을 건드리지 않고,
-    계정 파일과 `account.json` 만 읽고 쓴다. 이 목록에는 **실측한 값만** 넣는다 — 없는 값이나 모르는 값을 API 과금으로 보면
-    구독 세션의 한도가 경고 없이 사라진다.
+10. API 과금 세션(`claude_account::is_api_billing` — `.claude.json` 에 `oauthAccount` 가 없고 **그리고** `settings.json` 에
+    API key)은 `source` 와 무관하게 한도를 다루지 않는다. token·usage API·refresh·그 계정의 `state.json`/`usage.json` 을
+    건드리지 않고, 계정 파일·`settings.json`·`account.json` 만 읽는다(쓰는 것은 `account.json`). stdin 이 `rate_limits` 를
+    주면 구독이다. 판정 조건은 **실측한 신호만** 쓰고 하나만으로 판정하지 않는다 — 구독 세션을 API 과금으로 보면 한도가
+    경고 없이 사라진다.
 
 ## 개발
 
@@ -139,37 +140,43 @@ tmux로 agy를 실행해 statusLine에 stdin을 덤프하는 스크립트를 지
   크레딧 줄 배치뿐이고 agy에는 크레딧이 없어 쓰지 않는다. `COLORTERM=truecolor`는 온다(Claude Code에는 오지 않음).
 - `plan_tier`("Google AI Pro") · `email` · `agent_state` · `vcs` · `sandbox`도 온다. 쓰지 않는다.
 
-## API 과금 세션의 `billingType` (2026-11-20)
+## API 과금 세션 (2026-11-20)
 
-구독 로그인 없이 API 과금으로 도는 세션에서 statusline 이 `usage: token not found (keychain: … claudeAiOauth.accessToken
-missing …)` 경고를 냈다. 이 세션에는 5h/7d 구독 한도가 없어 보여 줄 값이 없다. 경고가 아니라 "해당 없음" 이다.
+구독 로그인 없이 API key 로 도는 세션에서 statusline 이 `usage: token not found (keychain: … not found; file: …)` 경고를 냈다.
+이 세션에는 5h/7d 구독 한도가 없어 보여 줄 값이 없다. 경고가 아니라 "해당 없음" 이다.
 
-**사용자 실측** (`CLAUDE_CONFIG_DIR=~/.claude-logan`, Console 로그인):
+**사용자 실측** (`CLAUDE_CONFIG_DIR=~/.claude-logan`, 전역 설정 `source: api`):
 
-- `<configDir>/.claude.json` 의 `oauthAccount.billingType` 이 `"prepaid"` 다.
-- keychain `Claude Code-credentials-ea5e01c3` 에는 `mcpOAuth` 만 있고 `claudeAiOauth` 가 없다. `.credentials.json` 은 없다.
+- `<configDir>/.claude.json` 에 **`oauthAccount` 가 없다.** 계정 관련 최상위 키는 `customApiKeyResponses` · `mcpNeedsAuthNoticed` 뿐이다.
+- `<configDir>/settings.json` 의 `env` 에 **`ANTHROPIC_API_KEY` 가 있다.** `apiKeyHelper` 는 없다.
+- keychain 에 `Claude Code-credentials-<sha256(dir)[:8]>` 항목이 없고 `.credentials.json` 도 없다.
+
+> **정정.** 처음 보고는 "그 폴더 `.claude.json` 의 `oauthAccount.billingType` 이 `"prepaid"`" 였고 #25 가 그것으로 판정했다.
+> 재현되지 않았다 — 그 폴더에서 `prepaid` 는 plugin 목록 캐시(`plugins/plugin-directory-cache-v2.json`)에만 있었다. 그래서
+> `billingType` 판정을 걷어 내고 위 두 신호로 바꿨다. `billingType` 은 읽지도 보이지도 않는다(CodeQL 이 `billing` 이름을 개인
+> 정보로 보고 doctor 출력에서 경고했고, 판정에 쓰지 않는 값이라 뺐다).
 
 **Claude Code 2.1.329 바이너리** (npm `@anthropic-ai/claude-code-linux-x64`, 문자열 검색):
 
-- `billingType` 은 프로필 응답의 `organization.billing_type` 을 그대로 옮긴 값이다. null 이면 저장하지 않거나 기존 값을 둔다.
-  그래서 **구독 계정에도 이 필드가 없을 수 있다.**
-- 크레딧 구매가 되는 구독 집합: `stripe_subscription` · `stripe_subscription_contracted` ·
+- OAuth 를 쓸지 정하는 함수가 API key 출처(`ANTHROPIC_API_KEY` · `apiKeyHelper`)가 잡히면 claude.ai OAuth 를 끈다. 대화형에서
+  `ANTHROPIC_API_KEY` 는 `customApiKeyResponses` 에서 승인된 키일 때만 쓴다.
+- "API Usage Billing" 표시는 OAuth 토큰(`claudeAiOauth`)에 inference scope 가 있느냐로 정한다(`billingType` 이 아니다).
+- `oauthAccount` 는 OAuth 로그인·프로필 조회 때 쓰인다. `billingType` 은 프로필의 `organization.billing_type` 이고 null 이면 저장하지
+  않는다. 크레딧 구매가 되는 구독 집합: `stripe_subscription` · `stripe_subscription_contracted` ·
   `stripe_subscription_enterprise_self_serve` · `aws_marketplace` · `c4e_consumption_trial` · `apple_subscription` ·
-  `google_play_subscription`.
-- `usage_based` 는 구독 OAuth 판정과 함께 쓰인다(`enterprise_usage_based` 계열 좌석). Enterprise 사용량 과금이고 API 과금이 아니다.
-- **`prepaid` 는 바이너리에 나오지 않는다.** Console 조직에 서버가 주는 값이다.
-- Claude Code 가 "API Usage Billing" 이라고 표시하는 기준은 `billingType` 이 아니라 OAuth 토큰(`claudeAiOauth`)에 inference
-  scope 가 있느냐다.
+  `google_play_subscription`. `usage_based` 는 Enterprise 사용량 과금 좌석이다. `prepaid` 는 바이너리에 나오지 않는다.
 
-**판정을 이렇게 정했다.** `billingType` 이 실측한 API 과금 값(`prepaid`)일 때만 API 과금으로 본다(허용 목록). 구독 값을
-나열하고 "그 밖은 API 과금" 으로 보면 필드가 없는 구독 계정이나 새 값에서 한도가 경고 없이 사라진다. `claudeAiOauth` 부재는
-쓰지 않는다. 구독 세션에서 토큰을 못 읽는 경우와 구분되지 않고, statusline 경로에서 keychain 을 불러야 한다.
+**판정을 이렇게 정했다.** 로그인 기록(`oauthAccount`) 없음 **그리고** `settings.json` 에 API key(`env.ANTHROPIC_API_KEY` 또는
+`apiKeyHelper`). stdin 이 `rate_limits` 를 주면 구독으로 본다. 하나만으로 판정하지 않는 이유: 로그인 기록만 없으면
+`CLAUDE_CODE_OAUTH_TOKEN` 구독 세션일 수 있고(그 세션이 `oauthAccount` 를 쓰는지는 확인하지 못했다), API key 만 있으면 구독으로
+로그인해 둔 세션일 수 있다(키를 승인하지 않았으면 구독으로 돈다). `claudeAiOauth` 부재는 쓰지 않는다 — 구독 세션에서 토큰을 못
+읽는 경우와 구분되지 않고 statusline 경로에서 keychain 을 불러야 한다.
 
-**확인하지 못한 것:** 이 맥의 구독 계정(Team · 개인)이 실제로 어떤 `billingType` 을 갖는지는 보지 않았다. 판정이 허용 목록이라
-그 값이 무엇이든 구독을 API 과금으로 잘못 보지는 않는다. Console 의 후불(postpaid) 조직이 어떤 값을 갖는지도 모른다. 그런
-조직이면 지금처럼 경고가 남고, 실측한 값을 `API_BILLING_TYPES` 에 더한다.
+**알아보지 못하는 것:** 키를 셸 환경 변수·프로젝트 설정·관리 설정에 둔 세션, 로그인해 둔 채 키를 승인한 세션, Console 계정으로
+OAuth 로그인한 세션(`oauthAccount` 가 생긴다 — 아직 실측하지 않았다). 그런 세션은 지금처럼 경고가 남는다(안전한 쪽).
 
 ## 미확인 사항 (실제 계정으로 검증 필요)
 
 - 크레딧으로 넘어간 뒤에도 stdin `rate_limits`가 100%로 유지되는지
-- 구독 계정(Team · 개인)의 `oauthAccount.billingType` 실제 값, Console 후불 조직의 값 (위 "API 과금 세션의 `billingType`")
+- 구독 계정(Team · 개인)의 `oauthAccount.billingType` 실제 값
+- `CLAUDE_CODE_OAUTH_TOKEN`(`claude setup-token`) 세션이 `oauthAccount` 를 쓰는지, Console OAuth 로그인 세션의 `.claude.json` 모양 (위 "API 과금 세션")

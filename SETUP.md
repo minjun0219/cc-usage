@@ -62,7 +62,7 @@ cc-usage version
 | Pro / Max (개인) | `stdin` |
 | 모르겠다 | 사용자에게 묻는다. 묻기 어려우면 생략(`auto`) |
 | 한도 표시가 필요 없다 | `none`: token·API·cache를 아예 보지 않는다 |
-| API 과금(Console 로그인) 설정 폴더 | 따로 적지 않는다. `billingType`이 `prepaid`면 `source`와 무관하게 `none`처럼 동작한다 |
+| API key로 도는 설정 폴더 | 따로 적지 않는다. 그 폴더 `settings.json`의 `env.ANTHROPIC_API_KEY`(또는 `apiKeyHelper`)와 로그인 기록 없음을 보고 `none`처럼 동작한다 |
 
 ```json
 {

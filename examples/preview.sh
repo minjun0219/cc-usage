@@ -150,21 +150,25 @@ show "Team(api) — 한도 전에도 크레딧" \
 show "source none (agy) — cache 가 있어도 한도·크레딧 없음" \
  "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Gemini 2.5 Pro\"},\"context_window\":{\"used_percentage\":42.5},\"workspace\":{\"current_dir\":\"$CWD\"}}" \
  --source none
-# API 과금 세션 — 구독 로그인 없이 Console 로 도는 설정 폴더(billingType: prepaid). source 가 api 여도
-# 한도·상태 문구 없이 none 처럼 그린다. 고치기 전에 남은 실패 기록(token not found)이 있어도 새지 않아야 한다.
+# API 과금 세션 — 구독 로그인 없이 API key 로 도는 설정 폴더(.claude.json 에 oauthAccount 없음, settings.json 의
+# env 에 ANTHROPIC_API_KEY). source 가 api 여도 한도·상태 문구 없이 none 처럼 그린다. 고치기 전에 남은 실패 기록(token not
+# found)이 있어도 새지 않아야 한다. 키는 가짜다.
 API_BILLING="$API_DIR/claude-api"
 mkdir -p "$API_BILLING"
 cat > "$API_BILLING/.claude.json" <<'JSON'
-{"oauthAccount":{"emailAddress":"preview-api@example.com","billingType":"prepaid"}}
+{"customApiKeyResponses":{"approved":[],"rejected":[]}}
+JSON
+cat > "$API_BILLING/settings.json" <<'JSON'
+{"env":{"ANTHROPIC_API_KEY":"sk-ant-preview-dummy"}}
 JSON
 (
 	export CLAUDE_CONFIG_DIR="$API_BILLING"
 	CACHE=$(cache_dir)
 	mkdir -p "$CACHE"
 	cat > "$CACHE/usage.json" <<'JSON'
-{"last_error":"token not found (keychain: claudeAiOauth.accessToken missing)","failures":3}
+{"last_error":"token not found (keychain: not found; file: No such file or directory)","failures":3}
 JSON
-	show "API 과금 세션 (billingType prepaid) — source api 여도 한도·경고 없음" \
+	show "API 과금 세션 (oauthAccount 없음 + settings.json API key) — source api 여도 한도·경고 없음" \
 	 "{\"session_id\":\"s\",\"model\":{\"display_name\":\"Opus 5\"},\"context_window\":{\"used_percentage\":41},\"workspace\":{\"current_dir\":\"$CWD\"}}"
 )
 # agy 호스트 — product: antigravity 면 source 와 무관하게 Claude 한도 경로를 타지 않고
