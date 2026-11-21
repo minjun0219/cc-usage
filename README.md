@@ -217,7 +217,7 @@ cc-usage doctor
 
 `token:` 줄이 ok면 할 일이 없습니다. 못 읽으면 `keychain 후보` 목록에서 맞는 항목을 골라 `keychainService`에 넣으세요. 처음 접근 시 keychain 허용 창이 뜰 수 있습니다.
 
-`과금:` 줄이 판정과 근거를 보여 줍니다. `API 과금 세션 — 한도 표시 없음 (<.claude.json> 에 oauthAccount 없음 · <settings.json> 에 env.ANTHROPIC_API_KEY)`이면 이 세션은 한도를 그리지 않습니다. 그때는 `token:` 줄도 `(API 과금 세션 — 찾지 않았다)`로 나오며 고칠 것이 없습니다. 로그인 기록이 있으면 `구독으로 본다 (<파일> 에 oauthAccount 있음 · billingType "…")`처럼 읽은 값을 함께 보여 줍니다. 계정 파일을 못 읽으면 statusline이 남긴 계정 캐시를 근거로 씁니다. key 값은 출력하지 않습니다.
+`과금:` 줄이 판정과 근거를 보여 줍니다. `API 과금 세션 — 한도 표시 없음 (<.claude.json> 에 oauthAccount 없음 · <settings.json> 에 env.ANTHROPIC_API_KEY)`이면 이 세션은 한도를 그리지 않습니다. 그때는 `token:` 줄도 `(API 과금 세션 — 찾지 않았다)`로 나오며 고칠 것이 없습니다. 로그인 기록이 있으면 `구독으로 본다 (<파일> 에 oauthAccount 있음)`으로 나옵니다. 계정 파일을 못 읽으면 statusline이 남긴 계정 캐시를 근거로 씁니다. key 값은 출력하지 않습니다.
 
 ### 3. 필드 검증 (처음 한 번)
 

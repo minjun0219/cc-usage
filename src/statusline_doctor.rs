@@ -52,7 +52,7 @@ pub fn doctor(
     let (state, usage, account, api_billing) = match &slot {
         Some(slot) => {
             println!("config_dir:    {}", slot.config_dir.display());
-            let (account, billing, bucket) = account_bucket(slot);
+            let (account, verdict, bucket) = account_bucket(slot);
             match (&account, slot.account_paths.first()) {
                 (Some(a), _) if !a.email.is_empty() => println!("계정:          {}", a.email),
                 (Some(_), _) => println!("계정:          (이메일 없음 — API 키 인증 등)"),
@@ -64,7 +64,7 @@ pub fn doctor(
                 }
                 (None, None) => println!("계정:          (계정 파일 후보 없음)"),
             }
-            println!("과금:          {}", billing.describe());
+            println!("과금:          {}", verdict.describe());
             let settings_dir = claude_account::config_dir(None, cfg.config_dir.as_deref(), home);
             let env_dir = std::env::var("CLAUDE_CONFIG_DIR").ok();
             println!(
@@ -90,7 +90,7 @@ pub fn doctor(
             println!("cache dir:     {}", bucket.display());
             let state: StateFile = read(&state_file(&bucket));
             let usage: UsageCache = read(&usage_file(&bucket));
-            (state, usage, account, billing.is_api())
+            (state, usage, account, verdict.is_api())
         }
         None => {
             println!("config_dir:    (HOME 을 몰라 계정·캐시를 정할 수 없다)");
@@ -154,8 +154,8 @@ pub fn doctor(
 }
 
 /// 계정·과금 방식과 그 캐시 폴더 — 계정 파일을 직접 읽고, 못 읽으면 statusline 이 남긴 계정 캐시로.
-fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Billing, PathBuf) {
-    let (account, email, billing) = match slot.read_account_at() {
+fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Verdict, PathBuf) {
+    let (account, email, verdict) = match slot.read_account_at() {
         Some((path, a)) => {
             // statusline 과 같은 판정 — 설정 파일은 로그인 기록이 없을 때만 본다.
             let mut key_setting = None;
@@ -163,44 +163,42 @@ fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Billing,
                 key_setting = slot.key_setting();
                 key_setting.is_some()
             });
-            let billing = Billing::File {
+            let verdict = Verdict::File {
                 path: path.display().to_string(),
                 logged_in: a.logged_in,
-                billing_type: a.billing_type.clone(),
                 settings: claude_account::settings_file(&slot.config_dir)
                     .display()
                     .to_string(),
                 key_setting,
             };
             let email = Some(a.email.clone());
-            (Some(a), email, billing)
+            (Some(a), email, verdict)
         }
         None => {
             let cached: AccountCache = read(&slot.account_file());
             let source = slot.account_source();
             let email = account_cached(&source, &cached).map(str::to_owned);
             // 판정을 적기 전의 캐시(`None`)면 모른다.
-            let billing = match cached.api_billing.filter(|_| cached.source == source) {
-                Some(api) => Billing::Cached {
+            let verdict = match cached.api_billing.filter(|_| cached.source == source) {
+                Some(api) => Verdict::Cached {
                     api,
                     from: slot.account_file().display().to_string(),
                 },
-                None => Billing::Unknown,
+                None => Verdict::Unknown,
             };
-            (None, email, billing)
+            (None, email, verdict)
         }
     };
     let bucket = slot.bucket(email.as_deref());
-    (account, billing, bucket)
+    (account, verdict, bucket)
 }
 
-/// doctor 가 보이는 과금 방식 판정과 그 근거.
-enum Billing {
+/// doctor 가 보이는 과금 판정과 그 근거.
+enum Verdict {
     /// 계정 파일(`path`)을 읽었다. `key_setting` 는 로그인 기록이 없을 때만 본 `settings` 의 API key 자리.
     File {
         path: String,
         logged_in: bool,
-        billing_type: Option<String>,
         settings: String,
         key_setting: Option<(PathBuf, &'static str)>,
     },
@@ -210,23 +208,23 @@ enum Billing {
     Unknown,
 }
 
-impl Billing {
+impl Verdict {
     fn is_api(&self) -> bool {
         match self {
-            Billing::File {
+            Verdict::File {
                 logged_in,
                 key_setting,
                 ..
             } => !logged_in && key_setting.is_some(),
-            Billing::Cached { api, .. } => *api,
-            Billing::Unknown => false,
+            Verdict::Cached { api, .. } => *api,
+            Verdict::Unknown => false,
         }
     }
 
     /// 판정과 근거 한 줄.
     fn describe(&self) -> String {
         match self {
-            Billing::File {
+            Verdict::File {
                 path,
                 key_setting: Some((settings, field)),
                 ..
@@ -234,23 +232,19 @@ impl Billing {
                 "API 과금 세션 — 한도 표시 없음 ({path} 에 oauthAccount 없음 · {} 에 {field})",
                 settings.display()
             ),
-            Billing::File {
+            Verdict::File {
                 path,
                 logged_in: true,
-                billing_type,
                 ..
-            } => match billing_type {
-                Some(t) => format!("구독으로 본다 ({path} 에 oauthAccount 있음 · billingType {t:?})"),
-                None => format!("구독으로 본다 ({path} 에 oauthAccount 있음 · billingType 없음)"),
-            },
-            Billing::File { path, settings, .. } => format!(
+            } => format!("구독으로 본다 ({path} 에 oauthAccount 있음)"),
+            Verdict::File { path, settings, .. } => format!(
                 "API 과금으로 보지 않는다 ({path} 에 oauthAccount 없음 · {settings} 에 API key 없음)"
             ),
-            Billing::Cached { api: true, from } => {
+            Verdict::Cached { api: true, from } => {
                 format!("API 과금 세션 — 한도 표시 없음 (계정 캐시 {from})")
             }
-            Billing::Cached { api: false, from } => format!("구독으로 본다 (계정 캐시 {from})"),
-            Billing::Unknown => {
+            Verdict::Cached { api: false, from } => format!("구독으로 본다 (계정 캐시 {from})"),
+            Verdict::Unknown => {
                 "모름 — 구독으로 본다 (계정 파일도 계정 캐시도 답하지 않았다)".into()
             }
         }

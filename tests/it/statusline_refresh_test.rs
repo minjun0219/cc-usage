@@ -519,7 +519,7 @@ fn doctor_reports_what_statusline_would_do() {
         format!("config_dir:    {home_dir}/.claude"),
         format!("계정:          {EMAIL}"),
         format!(
-            "과금:          구독으로 본다 ({home_dir}/.claude/.claude.json 에 oauthAccount 있음 · billingType 없음)"
+            "과금:          구독으로 본다 ({home_dir}/.claude/.claude.json 에 oauthAccount 있음)"
         ),
         "keychain:      cc-usage-test-absent".to_string(),
         format!("creds file:    {home_dir}/.claude/.credentials.json"),
@@ -688,7 +688,7 @@ fn doctor_tells_an_api_billing_session_and_why() {
     let (_, out, _) = home.run("http://127.0.0.1:1/usage", &env, &["doctor"]);
     assert!(
         out.contains(&format!(
-            "과금:          구독으로 본다 ({} 에 oauthAccount 있음 · billingType \"stripe_subscription\")\n",
+            "과금:          구독으로 본다 ({} 에 oauthAccount 있음)\n",
             claude_json.display()
         )),
         "{out}"

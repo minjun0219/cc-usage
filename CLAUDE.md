@@ -153,7 +153,8 @@ tmux로 agy를 실행해 statusLine에 stdin을 덤프하는 스크립트를 지
 
 > **정정.** 처음 보고는 "그 폴더 `.claude.json` 의 `oauthAccount.billingType` 이 `"prepaid"`" 였고 #25 가 그것으로 판정했다.
 > 재현되지 않았다 — 그 폴더에서 `prepaid` 는 plugin 목록 캐시(`plugins/plugin-directory-cache-v2.json`)에만 있었다. 그래서
-> `billingType` 판정을 걷어 내고 위 두 신호로 바꿨다. `billingType` 은 `doctor` 가 보이기만 한다.
+> `billingType` 판정을 걷어 내고 위 두 신호로 바꿨다. `billingType` 은 읽지도 보이지도 않는다(CodeQL 이 `billing` 이름을 개인
+> 정보로 보고 doctor 출력에서 경고했고, 판정에 쓰지 않는 값이라 뺐다).
 
 **Claude Code 2.1.329 바이너리** (npm `@anthropic-ai/claude-code-linux-x64`, 문자열 검색):
 
@@ -177,5 +178,5 @@ OAuth 로그인한 세션(`oauthAccount` 가 생긴다 — 아직 실측하지 �
 ## 미확인 사항 (실제 계정으로 검증 필요)
 
 - 크레딧으로 넘어간 뒤에도 stdin `rate_limits`가 100%로 유지되는지
-- 구독 계정(Team · 개인)의 `oauthAccount.billingType` 실제 값 — `doctor` 의 `과금:` 줄에 나온다
+- 구독 계정(Team · 개인)의 `oauthAccount.billingType` 실제 값
 - `CLAUDE_CODE_OAUTH_TOKEN`(`claude setup-token`) 세션이 `oauthAccount` 를 쓰는지, Console OAuth 로그인 세션의 `.claude.json` 모양 (위 "API 과금 세션")

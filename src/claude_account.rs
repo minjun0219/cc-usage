@@ -69,9 +69,6 @@ pub struct AccountFile {
     /// `oauthAccount` 가 있나 — Claude 계정(OAuth)으로 로그인한 기록. API key 로만 도는 설정 폴더에는 없다(2026-11-20 실측).
     /// API 과금 판정(`is_api_billing`)에 쓴다.
     pub logged_in: bool,
-    /// `oauthAccount.billingType` — 없거나 문자열이 아니면 `None`. 판정에는 쓰지 않고 `doctor` 가 보이기만 한다(구독 계정의
-    /// 값을 아직 실측하지 못했다 — CLAUDE.md "미확인 사항").
-    pub billing_type: Option<String>,
 }
 
 /// 이 세션이 API 과금인가 — **Claude 계정 로그인 기록(`oauthAccount`)이 없고 API key 가 설정돼 있을 때만**. `has_key_setting` 은
@@ -138,16 +135,10 @@ pub fn parse_account_file(raw: &str) -> Option<AccountFile> {
         Some(Value::String(email)) => email.clone(),
         Some(_) => return None,
     };
-    // 보이기만 하는 필드라 타입이 틀려도 파일 전체를 버리지 않는다(이메일·배지까지 잃을 이유가 없다).
-    let billing_type = account
-        .get("billingType")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
     Some(AccountFile {
         email,
         extra_usage_enabled,
         logged_in: true,
-        billing_type,
     })
 }
 

@@ -215,33 +215,33 @@ fn a_fresh_file_token_beats_an_expired_keychain_token() {
     assert!(!file_beats_expired_keychain(&token(Some(1_999_000)), now));
 }
 
-/// 로그인 기록(`oauthAccount`)이 있나와 `billingType` — `oauthAccount` 가 없거나 null 이면 로그인 기록이 없다(API key 로만 도는
-/// 설정 폴더의 실측 꼴). `billingType` 은 보이기만 하는 값이라 타입이 틀려도 이메일은 지킨다.
+/// 로그인 기록(`oauthAccount`)이 있나 — `oauthAccount` 가 없거나 null 이면 로그인 기록이 없다(API key 로만 도는
+/// 설정 폴더의 실측 꼴). `billingType` 은 읽지 않는다 — 타입이 틀려도 상관없다.
 #[test]
 fn account_file_tells_whether_a_claude_login_exists() {
-    let read = |raw: &str| parse_account_file(raw).map(|a| (a.logged_in, a.email, a.billing_type));
+    let read = |raw: &str| parse_account_file(raw).map(|a| (a.logged_in, a.email));
     // API key 로 도는 설정 폴더(2026-11-20 실측 — 계정 관련 키는 이 둘뿐이었다).
     assert_eq!(
         read(
             r#"{"customApiKeyResponses":{"approved":[],"rejected":[]},"mcpNeedsAuthNoticed":true}"#
         ),
-        Some((false, String::new(), None))
+        Some((false, String::new()))
     );
     assert_eq!(
         read(r#"{"oauthAccount":null}"#),
-        Some((false, String::new(), None))
+        Some((false, String::new()))
     );
     assert_eq!(
         read(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":"stripe_subscription"}}"#),
-        Some((true, "a@x".into(), Some("stripe_subscription".into())))
+        Some((true, "a@x".into()))
     );
     assert_eq!(
         read(r#"{"oauthAccount":{"emailAddress":"a@x"}}"#),
-        Some((true, "a@x".into(), None))
+        Some((true, "a@x".into()))
     );
     assert_eq!(
         read(r#"{"oauthAccount":{"emailAddress":"a@x","billingType":7}}"#),
-        Some((true, "a@x".into(), None))
+        Some((true, "a@x".into()))
     );
 }
 
