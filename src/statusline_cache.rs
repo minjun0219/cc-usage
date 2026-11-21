@@ -66,11 +66,11 @@ impl Slot {
         self.read_account_at().map(|(_, account)| account)
     }
 
-    /// 이 설정 폴더의 `settings.json` 에 API key 가 있으면 그 파일과 자리(`claude_account::settings_api_key`). 못 읽으면 `None`.
-    pub fn api_key_source(&self) -> Option<(PathBuf, &'static str)> {
+    /// 이 설정 폴더의 `settings.json` 에 API key 설정이 있으면 그 파일과 자리 이름(`claude_account::key_setting`). 못 읽으면 `None`.
+    pub fn key_setting(&self) -> Option<(PathBuf, &'static str)> {
         let path = claude_account::settings_file(&self.config_dir);
         let raw = std::fs::read_to_string(&path).ok()?;
-        claude_account::settings_api_key(&raw).map(|field| (path, field))
+        claude_account::key_setting(&raw).map(|field| (path, field))
     }
 
     /// `read_account` 와 같고 읽힌 파일의 경로를 함께 — `doctor` 가 근거로 보인다.
@@ -233,7 +233,7 @@ pub fn observe(
     if need_account_check(&source, &lim, &account, now) {
         if let Some(current) = slot.read_account() {
             // 설정 파일은 로그인 기록이 없을 때만 읽는다.
-            let file_api = is_api_billing(&current, || slot.api_key_source().is_some());
+            let file_api = is_api_billing(&current, || slot.key_setting().is_some());
             let now_api = file_api && !stdin_present;
             if now_api {
                 lim = Limits::default();

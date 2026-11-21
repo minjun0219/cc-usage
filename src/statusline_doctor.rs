@@ -158,19 +158,19 @@ fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Billing,
     let (account, email, billing) = match slot.read_account_at() {
         Some((path, a)) => {
             // statusline 과 같은 판정 — 설정 파일은 로그인 기록이 없을 때만 본다.
-            let mut api_key = None;
+            let mut key_setting = None;
             claude_account::is_api_billing(&a, || {
-                api_key = slot.api_key_source();
-                api_key.is_some()
+                key_setting = slot.key_setting();
+                key_setting.is_some()
             });
             let billing = Billing::File {
                 path: path.display().to_string(),
-                logged_in: a.oauth_account,
+                logged_in: a.logged_in,
                 billing_type: a.billing_type.clone(),
                 settings: claude_account::settings_file(&slot.config_dir)
                     .display()
                     .to_string(),
-                api_key,
+                key_setting,
             };
             let email = Some(a.email.clone());
             (Some(a), email, billing)
@@ -196,13 +196,13 @@ fn account_bucket(slot: &Slot) -> (Option<claude_account::AccountFile>, Billing,
 
 /// doctor 가 보이는 과금 방식 판정과 그 근거.
 enum Billing {
-    /// 계정 파일(`path`)을 읽었다. `api_key` 는 로그인 기록이 없을 때만 본 `settings` 의 API key 자리.
+    /// 계정 파일(`path`)을 읽었다. `key_setting` 는 로그인 기록이 없을 때만 본 `settings` 의 API key 자리.
     File {
         path: String,
         logged_in: bool,
         billing_type: Option<String>,
         settings: String,
-        api_key: Option<(PathBuf, &'static str)>,
+        key_setting: Option<(PathBuf, &'static str)>,
     },
     /// 계정 파일을 못 읽어 statusline 이 남긴 계정 캐시(`from`)의 판정을 썼다.
     Cached { api: bool, from: String },
@@ -214,8 +214,10 @@ impl Billing {
     fn is_api(&self) -> bool {
         match self {
             Billing::File {
-                logged_in, api_key, ..
-            } => !logged_in && api_key.is_some(),
+                logged_in,
+                key_setting,
+                ..
+            } => !logged_in && key_setting.is_some(),
             Billing::Cached { api, .. } => *api,
             Billing::Unknown => false,
         }
@@ -226,7 +228,7 @@ impl Billing {
         match self {
             Billing::File {
                 path,
-                api_key: Some((settings, field)),
+                key_setting: Some((settings, field)),
                 ..
             } if self.is_api() => format!(
                 "API 과금 세션 — 한도 표시 없음 ({path} 에 oauthAccount 없음 · {} 에 {field})",

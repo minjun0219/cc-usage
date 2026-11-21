@@ -45,7 +45,7 @@ pub fn run(cfg: &StatuslineConfig, now: DateTime<Utc>) {
     };
     // API 과금 계정에는 구독 한도가 없다 — 토큰도 찾지 않고 아무것도 쓰지 않는다(statusline 은 애초에 띄우지 않는다. 계정
     // 캐시가 뒤처진 사이에 띄운 갱신이나 손으로 부른 것을 여기서 막는다).
-    if claude_account::is_api_billing(&account, || slot.api_key_source().is_some()) {
+    if claude_account::is_api_billing(&account, || slot.key_setting().is_some()) {
         return;
     }
     let email = account.email;

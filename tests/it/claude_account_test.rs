@@ -219,8 +219,7 @@ fn a_fresh_file_token_beats_an_expired_keychain_token() {
 /// 설정 폴더의 실측 꼴). `billingType` 은 보이기만 하는 값이라 타입이 틀려도 이메일은 지킨다.
 #[test]
 fn account_file_tells_whether_a_claude_login_exists() {
-    let read =
-        |raw: &str| parse_account_file(raw).map(|a| (a.oauth_account, a.email, a.billing_type));
+    let read = |raw: &str| parse_account_file(raw).map(|a| (a.logged_in, a.email, a.billing_type));
     // API key 로 도는 설정 폴더(2026-11-20 실측 — 계정 관련 키는 이 둘뿐이었다).
     assert_eq!(
         read(
@@ -248,13 +247,13 @@ fn account_file_tells_whether_a_claude_login_exists() {
 
 /// API key 가 있는 자리 — `env.ANTHROPIC_API_KEY`(실측) 또는 `apiKeyHelper`. 비었거나 문자열이 아니거나 읽을 수 없으면 없다.
 #[test]
-fn settings_api_key_names_where_the_key_is() {
+fn key_setting_names_where_the_key_is() {
     assert_eq!(
-        settings_api_key(r#"{"env":{"ANTHROPIC_API_KEY":"sk-ant-x"}}"#),
+        key_setting(r#"{"env":{"ANTHROPIC_API_KEY":"sk-ant-x"}}"#),
         Some("env.ANTHROPIC_API_KEY")
     );
     assert_eq!(
-        settings_api_key(r#"{"apiKeyHelper":"~/bin/key.sh"}"#),
+        key_setting(r#"{"apiKeyHelper":"~/bin/key.sh"}"#),
         Some("apiKeyHelper")
     );
     for none in [
@@ -266,7 +265,7 @@ fn settings_api_key_names_where_the_key_is() {
         r#"{"apiKeyHelper":""}"#,
         "not json",
     ] {
-        assert_eq!(settings_api_key(none), None, "{none}");
+        assert_eq!(key_setting(none), None, "{none}");
     }
 }
 
@@ -274,11 +273,11 @@ fn settings_api_key_names_where_the_key_is() {
 /// API key 가 없으면 로그인 기록이 없어도(`CLAUDE_CODE_OAUTH_TOKEN` 구독 세션일 수 있다) 아니다 — 구독 세션의 한도를 경고
 /// 없이 지우면 안 된다. 로그인 기록이 있으면 설정 파일을 보지도 않는다.
 #[test]
-fn api_billing_needs_no_login_and_an_api_key() {
+fn api_billing_needs_no_login_and_a_key_setting() {
     let no_login = AccountFile::default();
     let logged_in = AccountFile {
         email: "a@x".into(),
-        oauth_account: true,
+        logged_in: true,
         ..AccountFile::default()
     };
     assert!(is_api_billing(&no_login, || true));

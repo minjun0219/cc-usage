@@ -785,14 +785,14 @@ fn statusline_inside_extra_commands_does_not_recurse() {
 
 /// API key 로 도는 설정 폴더의 실측 꼴(2026-11-20, `CLAUDE_CONFIG_DIR=~/.claude-logan`) — `.claude.json` 에 `oauthAccount` 가
 /// 없고(계정 관련 키는 이 둘뿐이었다), `settings.json` 의 `env` 에 `ANTHROPIC_API_KEY` 가 있다. 키는 가짜다.
-const API_KEY_CLAUDE_JSON: &str = r#"{"customApiKeyResponses":{"approved":["xxxxxxxxxxxxxxxxxxxx"],"rejected":[]},"mcpNeedsAuthNoticed":true}"#;
-const API_KEY_SETTINGS: &str = r#"{"env":{"ANTHROPIC_API_KEY":"sk-ant-test-dummy"}}"#;
+const NO_LOGIN_CLAUDE_JSON: &str = r#"{"customApiKeyResponses":{"approved":["xxxxxxxxxxxxxxxxxxxx"],"rejected":[]},"mcpNeedsAuthNoticed":true}"#;
+const KEY_SETTINGS: &str = r#"{"env":{"ANTHROPIC_API_KEY":"sk-ant-test-dummy"}}"#;
 
 /// 설정 폴더 하나를 API key 로 도는 꼴로 만든다.
-fn api_key_config_dir(dir: &std::path::Path) {
+fn keyed_config_dir(dir: &std::path::Path) {
     std::fs::create_dir_all(dir).unwrap();
-    std::fs::write(dir.join(".claude.json"), API_KEY_CLAUDE_JSON).unwrap();
-    std::fs::write(dir.join("settings.json"), API_KEY_SETTINGS).unwrap();
+    std::fs::write(dir.join(".claude.json"), NO_LOGIN_CLAUDE_JSON).unwrap();
+    std::fs::write(dir.join("settings.json"), KEY_SETTINGS).unwrap();
 }
 
 /// API key 로 도는 세션에는 5h/7d 구독 한도가 없다 — `source` 가 api·auto 여도 한도를 경고 없이 빼고 `none` 처럼 그린다.
@@ -804,7 +804,7 @@ fn full_draws_no_limits_for_an_api_key_session() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
         let logan = home.join(".claude-logan");
-        api_key_config_dir(&logan);
+        keyed_config_dir(&logan);
         // 이메일이 없으니 계정 캐시 폴더는 `_` 다.
         let bucket = cc_usage::claude_account::cache_bucket(&slot(home, &logan), None);
         std::fs::create_dir_all(&bucket).unwrap();
@@ -858,7 +858,7 @@ fn full_draws_stdin_limits_even_where_an_api_key_is_configured() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
     let logan = home.join(".claude-logan");
-    api_key_config_dir(&logan);
+    keyed_config_dir(&logan);
     let env = [
         ("CC_USAGE_NOW", NOW),
         ("CLAUDE_CONFIG_DIR", logan.to_str().unwrap()),
@@ -884,12 +884,12 @@ fn full_still_warns_when_a_subscription_session_has_no_token() {
         (
             "로그인 기록 + API key 설정",
             r#"{"oauthAccount":{"emailAddress":"a@example.com"}}"#,
-            Some(API_KEY_SETTINGS),
+            Some(KEY_SETTINGS),
             Some("a@example.com"),
         ),
         (
             "로그인 기록 없음 + API key 설정 없음",
-            API_KEY_CLAUDE_JSON,
+            NO_LOGIN_CLAUDE_JSON,
             None,
             None,
         ),
@@ -931,13 +931,13 @@ fn full_follows_a_switch_between_subscription_and_api_billing() {
     let dir = tempfile::tempdir().unwrap();
     let home = dir.path();
     let config_dir = home.join(".claude");
-    api_key_config_dir(&config_dir);
+    keyed_config_dir(&config_dir);
     let claude_json = config_dir.join(".claude.json");
     let set_login = |logged_in: bool| {
         let body = if logged_in {
             r#"{"oauthAccount":{"emailAddress":"a@example.com"}}"#
         } else {
-            API_KEY_CLAUDE_JSON
+            NO_LOGIN_CLAUDE_JSON
         };
         std::fs::write(&claude_json, body).unwrap();
     };

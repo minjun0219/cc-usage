@@ -68,13 +68,13 @@ pub struct AccountFile {
     pub extra_usage_enabled: Option<bool>,
     /// `oauthAccount` 가 있나 — Claude 계정(OAuth)으로 로그인한 기록. API key 로만 도는 설정 폴더에는 없다(2026-11-20 실측).
     /// API 과금 판정(`is_api_billing`)에 쓴다.
-    pub oauth_account: bool,
+    pub logged_in: bool,
     /// `oauthAccount.billingType` — 없거나 문자열이 아니면 `None`. 판정에는 쓰지 않고 `doctor` 가 보이기만 한다(구독 계정의
     /// 값을 아직 실측하지 못했다 — CLAUDE.md "미확인 사항").
     pub billing_type: Option<String>,
 }
 
-/// 이 세션이 API 과금인가 — **Claude 계정 로그인 기록(`oauthAccount`)이 없고 API key 가 설정돼 있을 때만**. `api_key` 는
+/// 이 세션이 API 과금인가 — **Claude 계정 로그인 기록(`oauthAccount`)이 없고 API key 가 설정돼 있을 때만**. `has_key_setting` 은
 /// 로그인 기록이 없을 때만 부른다(설정 파일을 읽는 일을 줄인다).
 ///
 /// API 과금 세션에는 5h/7d 구독 한도가 없다 — 보여 줄 값이 없으니 경고가 아니라 "해당 없음" 이다. 근거(2026-11-20):
@@ -86,8 +86,8 @@ pub struct AccountFile {
 /// 없이 지우면 안 된다. 토큰(`claudeAiOauth`)이 없다는 것으로는 가르지 않는다 — 구독 세션에서 토큰을 못 읽는 경우와
 /// 구분되지 않고, statusline 경로에서 keychain 을 불러야 한다. 로그인해 둔 채 API key 를 승인한 세션은 알아보지 못한다 —
 /// 그때는 지금처럼 경고가 남는다(안전한 쪽).
-pub fn is_api_billing(account: &AccountFile, api_key: impl FnOnce() -> bool) -> bool {
-    !account.oauth_account && api_key()
+pub fn is_api_billing(file: &AccountFile, has_key_setting: impl FnOnce() -> bool) -> bool {
+    !file.logged_in && has_key_setting()
 }
 
 /// 이 설정 폴더의 사용자 설정 파일(`settings.json`) — API key 설정을 본다.
@@ -100,7 +100,7 @@ pub fn settings_file(config_dir: &Path) -> PathBuf {
 ///
 /// `ANTHROPIC_API_KEY` 는 실측한 자리다. `apiKeyHelper` 는 Claude Code 가 같은 무게로 다루는 자리다(OAuth 를 끄는 조건이
 /// `ANTHROPIC_API_KEY` 와 한 줄에 있다). 셸 환경 변수·프로젝트 설정·관리 설정에 둔 키는 보지 않는다.
-pub fn settings_api_key(raw: &str) -> Option<&'static str> {
+pub fn key_setting(raw: &str) -> Option<&'static str> {
     let v: Value = serde_json::from_str(raw).ok()?;
     let set = |p: &str| {
         v.pointer(p)
@@ -146,7 +146,7 @@ pub fn parse_account_file(raw: &str) -> Option<AccountFile> {
     Some(AccountFile {
         email,
         extra_usage_enabled,
-        oauth_account: true,
+        logged_in: true,
         billing_type,
     })
 }
